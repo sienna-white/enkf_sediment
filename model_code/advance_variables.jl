@@ -145,7 +145,8 @@ function advance_algae_tracer(variables, algae, ind_photic_depth, discretization
 end 
 
 
-function advance_sediment(variables, algae, gamma, discretization)
+
+function advance_sediment(variables, Kz_past, sediment_type, gamma, discretization)
     N = discretization["N"]
     beta = discretization["beta"]
     dt = discretization["dt"]
@@ -153,9 +154,9 @@ function advance_sediment(variables, algae, gamma, discretization)
 
     aA, bA, cA, dA = initialize_abcd(N)
 
-    ws = algae["ws"]
-    Kz_past = variables["Kz"]
-    A_past = algae["c"]
+    ws = sediment_type["ws"]
+    # Kz_past = variables["Kz"]
+    C_past = variables[sediment_type["name"]]
 
     wsdtdz = abs(ws*dt)/dz
 
@@ -164,19 +165,19 @@ function advance_sediment(variables, algae, gamma, discretization)
         aA[i]  = -wsdtdz - beta/2 * (Kz_past[i-1]+ Kz_past[i]) 
         bA[i]  = 1 + wsdtdz - gamma[i]*dt  + beta/2*(Kz_past[i+1] + 2*Kz_past[i] + Kz_past[i-1]) 
         cA[i]  = -beta/2 * (Kz_past[i] + Kz_past[i+1])
-        dA[i]  = A_past[i]
+        dA[i]  = C_past[i]
     end 
         
     # Bottom-Boundary: no flux for scalars
     bA[1] =  1 + wsdtdz - (gamma[1]*dt) + beta/2*(Kz_past[2] + Kz_past[1]) 
     cA[1] =  -wsdtdz -beta/2 * (Kz_past[2] + Kz_past[1])
-    dA[1] =  A_past[1]
+    dA[1] =  C_past[1]
 
     # Top-Boundary: no flux for scalars
     aA[end] =  -beta/2 * (Kz_past[end] + Kz_past[end-1])
     bA[end] =  1 - gamma[end]*dt + beta/2 * (Kz_past[end] + Kz_past[end-1]) + wsdtdz # okay adding this here 
-    dA[end] = A_past[end]   
-     
+    dA[end] = C_past[end]   
+    
 
     # Solve the tridiagonal system
     A = TDMA(aA, bA, cA, dA, N) 
