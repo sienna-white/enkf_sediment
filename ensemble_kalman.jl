@@ -1,21 +1,20 @@
 #!/usr/bin/env julia
 
-using Plots
+# using Plots
 using Printf
 using DataStructures: OrderedDict
 using NCDatasets
 # using Arrow, DataFrames
 using CSV, DataFrames
-using Colors
-using ColorSchemes
-using Plots
+# using Colors
+# using ColorSchemes
+# using Plots
 using Printf
-using LaTeXStrings
+# using LaTeXStrings
 using Profile
 using Statistics 
 using LinearAlgebra
 using Random
-using Statistics
 
 fp="/global/homes/s/siennaw/scratch/siennaw/two_species/adjoint_phytoplankton/model_code"
 include("/global/homes/s/siennaw/scratch/siennaw/scripts/enkf_sediment/model_code/calculate_physical_variables.jl") 
@@ -34,7 +33,7 @@ time_range = global_params["time_range"] # number of time steps
 
 istart = global_params["istart"] # start time step
 iend = global_params["iend"] # end time step
-M = 3600 # number of time steps
+M = 360 #360*2 # number of time steps
 
 if M <= 0
     error("M must be greater than 0. Check istart and iend values.")
@@ -72,15 +71,15 @@ hr2s = 1/3600
 
 floc1 = Dict("d50" => 20e-6,             # mean diameter [m]
             "rho_sed" => 1001,          # specific density [kg/m^3]
-            "ws" => 1.38e-3,                # vertical velocity [m/s]
+            "ws" => 1.38e-5,                # vertical velocity [m/s]
             "Li" => 1.38e-5,             # specific loss rate [1/hour]
-                "name" => "floc1")                #  name 
+            "name" => "floc1")                #  name 
 
 floc2 = Dict("d50" => 20e-6,             # mean diameter [m]
             "rho_sed" => 1001,          # specific density [kg/m^3]
-            "ws" => 1.e-2,                # vertical velocity [m/s]
+            "ws" => 1.e-4,                # vertical velocity [m/s]
             "Li" => 1.38e-6,             # specific loss rate [1/hour]
-                "name" => "floc2")   
+            "name" => "floc2")   
                 
                 
 
@@ -90,9 +89,7 @@ floc2 = Dict("d50" => 20e-6,             # mean diameter [m]
 discretization = Dict("beta" => (dt/dz^2), "dz" => dz, "dt" => dt, "N" => N, "z"=> z, "H" => H)
 
 
-
-
-N_ensemble = 5 
+N_ensemble = 500
 
 output = Dict()
 
@@ -102,11 +99,11 @@ for var in var2save
     output[var] = zeros(Float64, N, M,  N_ensemble)
 end 
 
-init_conc = 10 
+init_conc = 100 
 
 for j in 1:N_ensemble
-   output["floc1"][:,1,j] =  init_conc  .+ randn(Float64, (N))
-   output["floc2"][:,1,j] =  init_conc  .+ randn(Float64, (N))
+   output["floc1"][:,1,j] .=  init_conc  .+ (abs.(randn(Float64, (N)))).*100
+   output["floc2"][:,1,j] .=  init_conc  .+ log.(abs.(randn(Float64, (N))*400))
 end
 
 
@@ -115,7 +112,7 @@ Times = collect(1:dt:(M*dt))
 println("Initialized time vector of length $M")
 
 # Generate fake observation 
-observations = @. sin(Times/3600)*2 
+observations = @. sin(Times/3600) 
 
                                           # N x M x  N_ensemble
 variables = Dict("floc1" => output["floc1"][:, 1, :],
@@ -138,33 +135,39 @@ function run_forward_model(EID, it, time, Diffusivity, variables)
         # # Split up loss + growth
         # gamma1 = growth1 .- floc1["Li"]  # subtract the loss rate
         # gamma2 = growth2 .- floc2["Li"]  # subtract the loss rate
+        ws = floc1["ws"]  * abs(rand()) 
 
         # Algae 
-        variables["floc1"][:, EID] = advance_sediment(variables, Diffusivity, floc1, gamma1, discretization)  
-        variables["floc2"][:, EID] = advance_sediment(variables, Diffusivity, floc2, gamma2, discretization) 
+        variables["floc1"][:, EID] = advance_sediment(variables["floc1"][:, EID], Diffusivity, floc1, gamma1, discretization, ws)  
+        # variables["floc2"][:, EID] = advance_sediment(variables["floc2"][:, EID], Diffusivity, floc2, gamma2, discretization, ws) 
                             # N  x  N_ensemble
         return variables
 
 end
 
 
-observations = zeros(Float64, N)
-observations .= 1
+observations = 200  #zeros(Float64, N)
+# observations[4] = 10 
+println("observation inserted at z= $(z[4]) ")
 
 # (10x10) (60x1)
 # H X 
-println("z= $(z[40:50])", "\n")
 
-H0 =  Matrix(I, N, N)  # zeros(Float64, N, N)
-# H0[40:50] .=  Matrix(I, N, N) # 1.0
+H0 =  zeros(1, N)  # zeros(Float64, N, N)
+H0[50] = 1
+println("H0 = $H0")
+
+
 # R = 1 * 
 # Iterate through time 
+
+observed_values = @. time_index_vec/300 # sin(time_index_vec/100) * 100
 for i in 2:M
     index = time_index_vec[i]
     time = index #Times[i];
 
     # Hydrodynamics
-    Diffusivity = ds["Kz"][:,index]
+    Diffusivity = zeros(N) .+ 1e-5 # ds["Kz"][:,index]
 
     println("On time $i")
     for EID in 1:N_ensemble
@@ -172,37 +175,36 @@ for i in 2:M
         run_forward_model(EID, index, time, Diffusivity, variables)
         output["floc1"][:,i, EID] = variables["floc1"][:, EID]
         output["floc2"][:,i, EID] = variables["floc2"][:, EID]
-    end
-
-    # EnKF step 
-    total_sediment = variables["floc1"] #.+ variables["floc2"]
-
-    ensemble_mean = mean(total_sediment, dims=2)    
-    R = 1 * Matrix(I, N, N)
-
-    detrended = total_sediment .- ensemble_mean
-    # covariance
-    # ensemble_covariance = (detrended * transpose(detrended)) *  1/(N_ensemble - 1)
-    ensemble_covariance = cov(total_sediment, dims=2)
-
-    kalman_gain = ensemble_covariance * transpose(H0) * inv(H0 * ensemble_covariance * transpose(H0) + R)
-    Y = observations .* sin(time/10)^2 * 100
-    # println("kalman_gain = $kalman_gain")   
-
-    for EID in 1:N_ensemble
-        variables["floc1"][:, EID] = variables["floc1"][:, EID] + kalman_gain * (observations .- H0 *variables["floc1"][:, EID])
-        # variables["floc2"][:, EID] = variables["floc2"][:, EID] + kalman_gain * (observations .- H0 *variables["floc2"][:, EID])
+        # println("EID = $EID completed")
+        # println("floc1 = $(variables["floc1"][1:5, EID])")
     end
 
 
+    if i%50 == 0
+        println("Performing EnKF update at time step $i")
+        # EnKF step  
+        
+        # Size : Nz x N_ensemble
+        total_sediment = variables["floc1"] #.+ variables["floc2"]
+        ensemble_mean = mean(total_sediment, dims=2)    # Size : Nz x 1
+        R = 1e-3 #* Matrix(I, N, N)                         #c Size : Nz x Nz
+    
+        ensemble_covariance = cov(total_sediment, dims=2)  # Nz x Nz    
+        kalman_gain = ensemble_covariance * transpose(H0) * inv(H0 * ensemble_covariance * transpose(H0) .+ R)
+
+        for EID in 1:N_ensemble
+            shift = kalman_gain * (observations .- H0 * variables["floc1"][:, EID]) 
+            variables["floc1"][:, EID] = variables["floc1"][:, EID] + shift
+        end
+    end
 end 
 
 
 
 # ********************** save data ****************************
 units_dict = Dict(
-    "floc1" => L"10$^6$/cm$^3$ cells",
-    "floc2" => L"10$^6$/cm$^3$ cells")
+    "floc1" => "conc1",
+    "floc2" => "conc2")
 
 var2name = Dict("floc1" => "HAB concentration",
             "floc2" => "Diatom concentration")
@@ -219,11 +221,15 @@ defDim(ds, "eid", N_ensemble)
 v = defVar(ds, "z", Float32, ("z",))
 v[:] = z
 
-v = defVar(ds, "t", Int, ("t",), attrib = OrderedDict("units" => "seconds"))
+v = defVar(ds, "t", Int, ("t",), attrib = OrderedDict("units" => "s"))
 v[:] = time_index_vec #collect(1:nt)
 
 v = defVar(ds, "eid", Int, ("eid",))
 v[:] = collect(1:N_ensemble)
+
+observed_var = defVar(ds, "observations", Float64, ("t",), attrib = OrderedDict(
+    "units" => "n/a", "long_name" => "Observed concentration"))
+observed_var[:] =  observed_values
 
 for var in var2save
     v2 = defVar(ds, var, Float64,("z","t", "eid" ), attrib = OrderedDict(
@@ -236,3 +242,5 @@ close(ds)
 
 
 
+    # detrended = total_sediment .- ensemble_mean
+    # ensemble_covariance = (detrended * transpose(detrended)) *  1/(N_ensemble - 1)

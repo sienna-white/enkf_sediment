@@ -146,7 +146,7 @@ end
 
 
 
-function advance_sediment(variables, Kz_past, sediment_type, gamma, discretization)
+function advance_sediment(C_past, Kz_past, sediment_type, gamma, discretization, ws)
     N = discretization["N"]
     beta = discretization["beta"]
     dt = discretization["dt"]
@@ -154,9 +154,9 @@ function advance_sediment(variables, Kz_past, sediment_type, gamma, discretizati
 
     aA, bA, cA, dA = initialize_abcd(N)
 
-    ws = sediment_type["ws"]
+    # ws = sediment_type["ws"]
     # Kz_past = variables["Kz"]
-    C_past = variables[sediment_type["name"]]
+    # C_past = variables[sediment_type["name"]]
 
     wsdtdz = abs(ws*dt)/dz
 
