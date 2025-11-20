@@ -159,6 +159,7 @@ function advance_sediment(C_past, Kz_past, sediment_type, gamma, discretization,
     # C_past = variables[sediment_type["name"]]
 
     wsdtdz = abs(ws*dt)/dz
+    # println("ws = $ws, wsdtdz = $wsdtdz")
 
     # All sediment is sinking 
     for i in 2:(N-1)
@@ -170,12 +171,12 @@ function advance_sediment(C_past, Kz_past, sediment_type, gamma, discretization,
         
     # Bottom-Boundary: no flux for scalars
     bA[1] =  1 + wsdtdz - (gamma[1]*dt) + beta/2*(Kz_past[2] + Kz_past[1]) 
-    cA[1] =  -wsdtdz -beta/2 * (Kz_past[2] + Kz_past[1])
+    cA[1] =  -wsdtdz - beta/2 * (Kz_past[2] + Kz_past[1])
     dA[1] =  C_past[1]
 
     # Top-Boundary: no flux for scalars
     aA[end] =  -beta/2 * (Kz_past[end] + Kz_past[end-1])
-    bA[end] =  1 - gamma[end]*dt + beta/2 * (Kz_past[end] + Kz_past[end-1]) + wsdtdz # okay adding this here 
+    bA[end] =  1 + wsdtdz - gamma[end]*dt + beta/2 * (Kz_past[end] + Kz_past[end-1])  # okay adding this here 
     dA[end] = C_past[end]   
     
 
