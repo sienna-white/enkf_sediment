@@ -1,6 +1,5 @@
 #!/usr/bin/env julia
 
-#  module load  julia/1.11.7 
 using Printf
 using DataStructures: OrderedDict
 using NCDatasets
@@ -16,9 +15,8 @@ include("hydro/advance_variables.jl")
 # include("hydro/phytoplankton.jl")
 include("hydro/forcings.jl") 
 include("hydro/output.jl")
-# include("floc_mod.jl")
-include("floc_mod.jl")
-using .floc_mod
+
+
 # ws1 = parse(Float64, ARGS[1])
 # ws2 = parse(Float64, ARGS[2])
 # pmax1 = parse(Float64, ARGS[3])
@@ -26,7 +24,7 @@ using .floc_mod
 # fout_name = ARGS[5]
 
 
-function run_my_model(file_out_name::String)
+function run_my_model(ws1::Real, ws2::Real, pmax1::Real, pmax2::Real, file_out_name::String)
 
     # println("Running model with ws1 = $ws1, ws2 = $ws2, pmax1 = $pmax1, pmax2 = $pmax2.. \n output file name = $file_out_name \n")
 
@@ -45,7 +43,7 @@ function run_my_model(file_out_name::String)
     
     # function get_wind_speed(index::Int, wind=wind)
     #     return wind[index]
-    # end
+    end
     #***********************************************************************
 
     
@@ -91,21 +89,11 @@ function run_my_model(file_out_name::String)
 
     # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
     Ns = 5                  # Number of sediment size classes
-    ssc = zeros(N, Ns) .+ 1e5     # Matrix for sediment concentration (Nz x Ns)
-    
+    ssc = zeros(N, Ns)      # Matrix for sediment concentration (Nz x Ns)
 
     D = LinRange(1, 20, Ns) .* 1e-6     # Sediment grain sizes (\mu m )
-    D = collect(D)
-    println("Sediment grain sizes (m) = ", D)
-
-    # initialize once
-    init_params!(D, Ns)
-
-    # settling velocities for each size class
-    ws = floc_mod.ws[]
-    println("Settling velocities (m/s) = ", ws)
-
-    add_sediment_to_output(Ns, isave, M, N)
+    ρ_s = calculate_density(D)          # Sediment density (kg/m^3) (Ns x 1)
+    w_s = calculate_w_s(D, ρ_s)         # Settling velocity (m/s)   (Ns x 1)
 
     #***************************************************************************
     #   Initialize variables
@@ -127,7 +115,7 @@ function run_my_model(file_out_name::String)
     variables["C"] = similar(z) .+ 26
     rho_ = calculate_rho(variables["C"], 22)
     variables["N_BV2"] = calculate_brunt_vaisala(rho_, discretization)
-    variables["SSC"] = ssc
+
 
     variables["Q2"], variables["Q2L"], 
         variables["Q"], variables["L"], 
@@ -148,8 +136,6 @@ function run_my_model(file_out_name::String)
     save2output(1, 1, "N_BV2", variables["N_BV2"])
     save2output(1, 1, "Kq", variables["Kq"])
     save2output(1, 1, "Nu", variables["Nu"])
-    
-    save_sediment2output(1, 1, ssc)
 
     for i in 2:(M-1)
 
@@ -198,18 +184,15 @@ function run_my_model(file_out_name::String)
         gh = calculate_Gh(N_BV2, L, Q)
         nu_t, Kq, Kz = calculate_turbulent_functions(gh, Q, L, discretization) 
 
-        gamma = similar(ssc)
-        for ix in 1:N            # ssc @ z, num sed classes, shear
-            # println("calculating sediment class @ depth $ix ")
-            gamma[ix,:] = run_floc_mod(ssc[ix,:], Ns, 2)
-        end
-        # ssc ~ (Nz x Ns)
-        # println("gamma = ", gamma)
+        # [8] Advance phytoplankton
 
-        for ix in 1:Ns
-            ssc[:,ix] = advance_sediment(variables, ssc[:,ix], ws[ix], gamma, discretization)
-        end
+        # Algae 1 #zeros(N) #
+        
+        # a1 = advance_algae(variables, algae1, gamma, discretization)  # zeros(N) .+ init_algae  #
+        # algae1["c"] =  clamp.(a1, 1e-5, Inf)   
 
+        # println("gamma = ", gamma[end-5:end])
+        # println("algae1 = ", algae1["c"][end-5:end])
 
 
         # [9] Pack variables for next timestep 
@@ -234,7 +217,6 @@ function run_my_model(file_out_name::String)
             save2output(time, index, "N_BV2", variables["N_BV2"])
             save2output(time, index, "Nu", variables["Nu"])
             save2output(time, index, "Kq", variables["Kq"])
-            save_sediment2output(time, index, ssc)
             # push!(real_times_saved, real_time[i])
         end
 
@@ -251,6 +233,8 @@ function run_my_model(file_out_name::String)
     var2name = Dict("U" => "Velocity", 
                 "C" => "Temperature", 
                 "Kz" => "Turbulent diffusivity", 
+                "algae1" => "Diatom concentration",
+                "algae2" => "HAB concentration",
                 "L" => "Turbulent length scale", 
                 "Q2" => "TKE","Q2L" => "TKE*L",
                 "N_BV2" => "Brunt-Vaisala frequency", "Kq" => "Kq", "Nu" => "Nu_t")
@@ -285,7 +269,7 @@ function run_my_model(file_out_name::String)
 end 
 
 file_out_name = @sprintf("hydro.nc") 
-run_my_model("hydro.nc")
+run_my_model(1.38e-4, 1.38e-4, 0.04, 0.04, "hydro.nc")
 
 
 

@@ -34,9 +34,8 @@ println("Courant condition = $(0.01*dt/dz)")
 
 # dz = 0.03 
 # dt = 10 * 0.001 = 0.01  1e-2 * 10 = 0.01 / 
-istart = global_params["istart"] # start time step
-iend = global_params["iend"] # end time step
-M = 360*12  #360*2 # number of time steps
+
+M = 360*3  #360*2 # number of time steps
 
 if M <= 0
     error("M must be greater than 0. Check istart and iend values.")
@@ -75,7 +74,7 @@ hr2s = 1/3600
 
 floc1 = Dict("d50" => 20e-6,             # mean diameter [m]
         "rho_sed" => 1001,          # specific density [kg/m^3]
-        "ws" => 0.01,                # vertical velocity [m/s]
+        "ws" => 1e-4,                # vertical velocity [m/s]
         "name" => "sand")                #  name 
 
 floc2 = Dict("d50" => 20e-6,             # mean diameter [m]
@@ -135,8 +134,7 @@ function run_forward_model(EID, it, time, Diffusivity, variables)
 
         ws_multiplier = ws_time_varying[it]
 
-        ws = 1e-4 #floc1["ws"]  # * ws_multiplier
-
+       #floc1["ws"]  # * ws_multiplier
         variables["floc1"][:] = advance_sediment(variables["floc1"][:], Diffusivity, floc1, gamma1, discretization, ws)
         println( variables["floc1"][end-10:end])
 

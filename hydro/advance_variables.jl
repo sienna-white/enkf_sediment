@@ -205,6 +205,44 @@ function advance_algae(variables, algae, gamma, discretization)
 end 
 
 
+
+function advance_sediment(variables, C_past, ws, gamma, discretization)
+    N = discretization["N"]
+    beta = discretization["beta"]
+    dt = discretization["dt"]
+    dz = discretization["dz"]
+
+    aA, bA, cA, dA = initialize_abcd(N)
+
+    Kz_past = variables["Kz"]
+
+    wsdtdz = abs(ws*dt)/dz
+
+    for i in 2:(N-1)
+        aA[i]  = -wsdtdz - beta/2 * (Kz_past[i-1]+ Kz_past[i]) 
+        bA[i]  = 1 + wsdtdz - gamma[i]*dt  + beta/2*(Kz_past[i+1] + 2*Kz_past[i] + Kz_past[i-1]) 
+        cA[i]  = -beta/2 * (Kz_past[i] + Kz_past[i+1])
+        dA[i]  = C_past[i]
+    end 
+        
+    # Bottom-Boundary: no flux for scalars
+    bA[1] =  1 + wsdtdz - (gamma[1]*dt) + beta/2*(Kz_past[2] + Kz_past[1]) 
+    cA[1] =  -wsdtdz -beta/2 * (Kz_past[2] + Kz_past[1])
+    dA[1] =  C_past[1]
+
+    # Top-Boundary: no flux for scalars
+    aA[end] =  -beta/2 * (Kz_past[end] + Kz_past[end-1])
+    bA[end] =  1 - gamma[end]*dt + beta/2 * (Kz_past[end] + Kz_past[end-1]) + wsdtdz # okay adding this here 
+    dA[end] = C_past[end]   
+    
+
+    # Solve the tridiagonal system
+    A = TDMA(aA, bA, cA, dA, N) 
+    
+    return A
+end 
+
+
 function advance_scalar(variables, discretization)
 
     Kz_past = variables["Kz"]
