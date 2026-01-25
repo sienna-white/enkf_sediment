@@ -5,7 +5,7 @@ times = []
 # ***********************************************************************
 function create_output_dict(M::Int, isave::Int, Vars::Vector{<:String}, N::Int, output=output)
     nvars = length(Vars)
-    n_saved_steps = div(M,isave) + 1 #- 1
+    n_saved_steps = div((M),isave) + 1 #- 1
 
     for i = 1:nvars
         output[Vars[i]] = zeros(Float64, N, n_saved_steps)
@@ -15,7 +15,7 @@ end
 
 function add_sediment_to_output(Ns, isave, M, N, output=output)
     @info "Creating output structure to save sediment concentrations..."
-    n_saved_steps = div(M,isave) + 1 #- 1
+    n_saved_steps = div((M), isave) + 1 #- 1
 
     output["ssc"] = zeros(Float64, N, Ns, n_saved_steps)
 end
@@ -25,7 +25,7 @@ end
 function save_sediment2output(time, index, ssc, output=output)
     # print("Saving $varname at time $time")
     output["ssc"][:,  :, index] .= ssc
-    push!(times, time)
+    # push!(times, time)
 end 
 
 # ***********************************************************************

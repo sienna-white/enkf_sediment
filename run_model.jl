@@ -10,6 +10,7 @@ using Profile
 using Statistics 
 using Arrow, DataFrames
 using LaTeXStrings
+using LinearAlgebra
 
 include("hydro/calculate_physical_variables.jl") 
 include("hydro/advance_variables.jl")
@@ -52,15 +53,15 @@ function run_my_model(file_out_name::String)
 
 
     #********************** SPATIAL DOMAIN  ***************************
-    N = 60    # number of grid points
+    N = 30 #60 #60    # number of grid points
     H = 6    # depth (meters)
     dz = H/N  # grid spacing - may need to adjust to reduce oscillations
-    dt = 10   # (seconds) size of time step 
-    M  = 51839 #00 #000 # 50000  #500 #
+    dt = 10  # (seconds) size of time step 
+    M  = 300 #360 #00 #000 # 50000  #500 #
 
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
-    isave = 6 #1000
-    var2save = ["U","Kq", "Nu", "C", "Kz", "L", "Q2", "Q2L", "N_BV2", "ssc"]
+    isave = 1 # 6 #1000
+    var2save = ["U","Kq", "Nu", "C", "Kz", "L", "Q2", "Q2L", "N_BV2"]
 
     create_output_dict(M, isave, var2save, N)
 
@@ -90,8 +91,8 @@ function run_my_model(file_out_name::String)
 
 
     # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
-    Ns = 5                  # Number of sediment size classes
-    ssc = zeros(N, Ns) .+ 1e5     # Matrix for sediment concentration (Nz x Ns)
+    Ns = 2                  # Number of sediment size classes
+    ssc0 = zeros(N, Ns) .+ 1e5     # Matrix for sediment concentration (Nz x Ns)
     
 
     D = LinRange(1, 20, Ns) .* 1e-6     # Sediment grain sizes (\mu m )
@@ -102,8 +103,12 @@ function run_my_model(file_out_name::String)
     init_params!(D, Ns)
 
     # settling velocities for each size class
-    ws = floc_mod.ws[]
+    ws = floc_mod.ws[] .* 10
     println("Settling velocities (m/s) = ", ws)
+    for i in 1:Ns
+        CFL = ws[i] * dt / dz
+        println("Size class $i: CFL = $CFL")
+    end
 
     add_sediment_to_output(Ns, isave, M, N)
 
@@ -127,12 +132,12 @@ function run_my_model(file_out_name::String)
     variables["C"] = similar(z) .+ 26
     rho_ = calculate_rho(variables["C"], 22)
     variables["N_BV2"] = calculate_brunt_vaisala(rho_, discretization)
-    variables["SSC"] = ssc
+    variables["SSC"] = ssc0
 
     variables["Q2"], variables["Q2L"], 
-        variables["Q"], variables["L"], 
-        variables["Gh"], variables["Nu"], 
-        variables["Kq"], variables["Kz"] = initialize_turbulent_functions(discretization, variables["N_BV2"])
+    variables["Q"], variables["L"], 
+    variables["Gh"], variables["Nu"], 
+    variables["Kq"], variables["Kz"] = initialize_turbulent_functions(discretization, variables["N_BV2"])
 
     base_temp = 22
     dtemp = 1.5 
@@ -148,69 +153,69 @@ function run_my_model(file_out_name::String)
     save2output(1, 1, "N_BV2", variables["N_BV2"])
     save2output(1, 1, "Kq", variables["Kq"])
     save2output(1, 1, "Nu", variables["Nu"])
-    
-    save_sediment2output(1, 1, ssc)
+    save_sediment2output(1, 1, ssc0)
 
+    W0 = 3 
     for i in 2:(M-1)
 
 
         time = Times[i];
 
-        # [1] Advance velocity field
-        pressure = get_pressure_at_timestamp(time, Px0, T_Px)
+        # [1] Get pressure + wind forcing at this time
+        pressure = Px0 #get_pressure_at_timestamp(time, Px0, T_Px)
         ustar = calculate_ustar(variables["U"])
 
-        W0 = 3 #get_wind_speed(i)
-
-        # C = get_unstrat_temp_field(i)       # [1] Unstratified field @ night 
-        rho = calculate_rho(variables["U"], base_temp)   # [2] Calculate density from temperature field
+        # [2] Calculate density & stratification from temperature field
+        rho = calculate_rho(variables["U"], base_temp)   
         N_BV2 = calculate_brunt_vaisala(rho, discretization)
-        # else
-        #     C = get_unstrat_temp_field(i)  ## println("$(real_time[i])  I0 = $I0 --> daytime ")
-        #     # C = get_temp_field(i) #get_temp_field(i)              # [1] Observational, sttratified temperature field 
-        #     rho = calculate_rho(C, base_temp)  # [2] Calculate density from temperature field  
-        #     N_BV2 = calculate_brunt_vaisala(rho, discretization) # [3] Calculate Brunt-Vaisala frequency 
-        #     N_BV2 = clamp.(N_BV2, -1e-3, Inf)               # [4] Prevent any unstable stratification during daylight hours
-        # end 
-               
 
-        # C  = get_temp_field(i)
-        # I0 = diurnal_light(time, I_in, 0, DIURNAL_LIGHT)
-
-        # Advance velocity field 
+        # [3] Advance velocity field 
         wind_stress = wind_speed_2_wind_stress(W0, discretization) 
         U = advance_velocity(variables, pressure, discretization, wind_stress)
 
-        #  [2] Advance TKE / Q2 
+        # [4] Advance TKE / Q2 / Q2L
         Q2 = advance_Q2(variables, ustar, discretization) 
-        Q = @. sqrt(Q2)
-
-        #  [3] Advance Q2*L      
+        Q = @. sqrt(Q2)   
         Q2L = advance_Q2L(variables, ustar, discretization)
     
-        #  [4] Advance temperature 
+        # [5] Advance temperature 
         C = advance_scalar(variables, discretization) 
 
-        # [7] Semi-implicit: Calculate turbulent lengthscale
+        # [6] Semi-implicit: Calculate turbulent lengthscale
         L, Q2L = calculate_lengthscale(Q2, Q2L, N_BV2, discretization)
 
-        # Calculate stability parameter 
+        # [7] Calculate stability parameter + turbulent diffusivities 
         gh = calculate_Gh(N_BV2, L, Q)
         nu_t, Kq, Kz = calculate_turbulent_functions(gh, Q, L, discretization) 
 
-        gamma = similar(ssc)
-        for ix in 1:N            # ssc @ z, num sed classes, shear
-            # println("calculating sediment class @ depth $ix ")
-            gamma[ix,:] = run_floc_mod(ssc[ix,:], Ns, 2)
-        end
-        # ssc ~ (Nz x Ns)
+        # ***************************************************************
+        # [8] Advance sediment concentrations for each size class
+        ssc = variables["SSC"]
+        print("KZ = ", variables["Kz"])
+        variables["Kz"] = zeros(N)
+        gamma = zeros(N)
+        # for ix in 1:N            # ssc @ z, num sed classes, shear
+        #     # println("calculating sediment class @ depth $ix ")
+        #     gamma[ix,:] = run_floc_mod(ssc[ix,:], Ns, 2)
+        # end
+        # 
         # println("gamma = ", gamma)
+        println(" **** $i ******************************** ")
+        for i_sed_class in 1:Ns                          # ssc ~ (Nz x Ns)
+            # println(ws[ix])
+            
+            println("\n i_sed_class : $i_sed_class, ws: $(ws[i_sed_class])")
+            println("Before:", ssc[:,i_sed_class])
 
-        for ix in 1:Ns
-            ssc[:,ix] = advance_sediment(variables, ssc[:,ix], ws[ix], gamma, discretization)
+            s0 = advance_sediment(variables, ssc[:,i_sed_class], ws[i_sed_class], gamma, discretization)
+            ssc[:, i_sed_class] = s0 
+            println(ssc[:,i_sed_class])
+            println("--------------------------------------------------\n\n\n")
+            
         end
 
-
+        
+         
 
         # [9] Pack variables for next timestep 
         variables["U"] = U
@@ -222,8 +227,10 @@ function run_my_model(file_out_name::String)
         variables["Kq"] = Kq
         variables["Kz"] = Kz
         variables["L"] = L
+        variables["SSC"] = ssc
 
         if i % isave == 0
+           
             index = div(i, isave) + 1  #(i-1) #div(i, isave)
             save2output(time, index, "U", variables["U"])
             save2output(time, index, "Kz", variables["Kz"])
@@ -255,20 +262,41 @@ function run_my_model(file_out_name::String)
                 "Q2" => "TKE","Q2L" => "TKE*L",
                 "N_BV2" => "Brunt-Vaisala frequency", "Kq" => "Kq", "Nu" => "Nu_t")
 
-    times_unique = unique(times) 
-
-    ds = NCDataset("hydro.nc" ,"c")
+    # times_unique = unique(times) 
+    nt = div(M,isave) + 1
+    
+    ds = NCDataset("hydro1.nc" ,"c")
     ds.attrib["title"] = "testing"
 
     # model_time = collect(1:M)
     defDim(ds, "z", length(z)) 
-    defDim(ds, "time", length(times_unique))
+    defDim(ds, "time", nt)
+
+    # println("Length of times_unique is ", size(t2))
+    println("Length of SSC is ", size(output["ssc"]))
+
+    defDim(ds, "Ds", length(D))
+    v = defVar(ds, "Ds", Float32, ("Ds",))
+    v[:] = D
+
+
+
+    # N, Ns, n_saved_steps
+    # ssc 
+    v = defVar(ds, "ssc", Float64,("z", "Ds", "time"), attrib = OrderedDict(
+        "units" =>  "parts/m3", "long_name" => "suspended sediment concentration"))
+    v[:,:,:] = output["ssc"]
+
+    # v = defVar(ds, "mass", Float64, ("Ds"), attrib = OrderedDict(
+    #     "units" =>  "kg/particle", "long_name" => "mass of particle size class"))
+    # v[:] = floc_mod.mass[]
+
 
     v = defVar(ds, "z", Float32, ("z",))
     v[:] = z
 
     v = defVar(ds, "time", Float32, ("time",), attrib = OrderedDict("units" => "seconds"))
-    v[:] = collect(1:(length(times_unique))) #model_time
+    v[:] = collect(1:nt) #model_time
 
     for var in var2save
         # println(var)
@@ -285,7 +313,7 @@ function run_my_model(file_out_name::String)
 end 
 
 file_out_name = @sprintf("hydro.nc") 
-run_my_model("hydro.nc")
+run_my_model("hydro1.nc")
 
 
 

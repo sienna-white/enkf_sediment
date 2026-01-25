@@ -24,7 +24,6 @@ Sq=0.2  # [-]
 function TDMA(a::Vector{<:Real}, b::Vector{<:Real}, c::Vector{<:Real}, d::Vector{<:Real}, N::Real)
     # Tri Diagonal Matrix Algorithm(a.k.a Thomas algorithm) solver
     # a = Lower Diag, b = Main Diag, c = Upper Diag, d = solution vector
-
     x = zeros(N)
     for i in 2:N
         b[i] = b[i] - a[i]/b[i-1]*c[i-1]
@@ -216,7 +215,8 @@ function advance_sediment(variables, C_past, ws, gamma, discretization)
 
     Kz_past = variables["Kz"]
 
-    wsdtdz = abs(ws*dt)/dz
+    println("C_past past = ", C_past)
+    wsdtdz = (ws*dt)/dz
 
     for i in 2:(N-1)
         aA[i]  = -wsdtdz - beta/2 * (Kz_past[i-1]+ Kz_past[i]) 
@@ -235,10 +235,15 @@ function advance_sediment(variables, C_past, ws, gamma, discretization)
     bA[end] =  1 - gamma[end]*dt + beta/2 * (Kz_past[end] + Kz_past[end-1]) + wsdtdz # okay adding this here 
     dA[end] = C_past[end]   
     
-
+    println("aA=", aA)
+    println("bA=", bA)
+    println("cA=", cA)
+    println("dA=", dA)
     # Solve the tridiagonal system
     A = TDMA(aA, bA, cA, dA, N) 
-    
+
+    println("Norm difference sediment class advance: ")
+    println("A=", A)
     return A
 end 
 
