@@ -153,30 +153,31 @@ function advance_sediment(C_past, Kz_past, sediment_type, gamma, discretization,
     dz = discretization["dz"]
 
     aA, bA, cA, dA = initialize_abcd(N)
-
-    # ws = sediment_type["ws"]
-    # Kz_past = variables["Kz"]
-    # C_past = variables[sediment_type["name"]]
-
     wsdtdz = abs(ws*dt)/dz
-    # println("ws = $ws, wsdtdz = $wsdtdz")
 
-    # All sediment is sinking 
+     # All sediment is sinking 
     for i in 2:(N-1)
-        aA[i]  = -wsdtdz - beta/2 * (Kz_past[i-1]+ Kz_past[i]) 
-        bA[i]  = 1 + wsdtdz - gamma[i]*dt  + beta/2*(Kz_past[i+1] + 2*Kz_past[i] + Kz_past[i-1]) 
-        cA[i]  = -beta/2 * (Kz_past[i] + Kz_past[i+1])
+        aA[i]  = wsdtdz - beta/2 * (Kz_past[i-1]+ Kz_past[i]) 
+        bA[i]  = 1 - wsdtdz - gamma[i]*dt  + beta/2*(Kz_past[i+1] + 2*Kz_past[i] + Kz_past[i-1]) 
+        # cA[i]  = -beta/2 * (Kz_past[i] + Kz_past[i+1])
         dA[i]  = C_past[i]
     end 
+    # # All sediment is sinking 
+    # for i in 2:(N-1)
+    #     aA[i]  = -wsdtdz - beta/2 * (Kz_past[i-1]+ Kz_past[i]) 
+    #     bA[i]  = 1 + wsdtdz - gamma[i]*dt  + beta/2*(Kz_past[i+1] + 2*Kz_past[i] + Kz_past[i-1]) 
+    #     cA[i]  = -beta/2 * (Kz_past[i] + Kz_past[i+1])
+    #     dA[i]  = C_past[i]
+    # end 
         
     # Bottom-Boundary: no flux for scalars
-    bA[1] =  1 + wsdtdz - (gamma[1]*dt) + beta/2*(Kz_past[2] + Kz_past[1]) 
-    cA[1] =  -wsdtdz - beta/2 * (Kz_past[2] + Kz_past[1])
-    dA[1] =  C_past[1]
+    # bA[1] =  1 + wsdtdz - (gamma[1]*dt)  #+ beta/2*(Kz_past[2] + Kz_past[1]) 
+    # cA[1] =  -wsdtdz  #- beta/2 * (Kz_past[2] + Kz_past[1])
+    # dA[1] =  C_past[1]
 
     # Top-Boundary: no flux for scalars
-    aA[end] =  -beta/2 * (Kz_past[end] + Kz_past[end-1])
-    bA[end] =  1 + wsdtdz - gamma[end]*dt + beta/2 * (Kz_past[end] + Kz_past[end-1])  # okay adding this here 
+    aA[end] =  0 #-beta/2 * (Kz_past[end] + Kz_past[end-1])
+    bA[end] =  1 - wsdtdz #- gamma[end]*dt  #+ beta/2 * (Kz_past[end] + Kz_past[end-1])  # okay adding this here 
     dA[end] = C_past[end]   
     
 

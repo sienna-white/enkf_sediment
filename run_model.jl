@@ -53,8 +53,8 @@ function run_my_model(file_out_name::String)
 
 
     #********************** SPATIAL DOMAIN  ***************************
-    N = 30 #60 #60    # number of grid points
-    H = 6    # depth (meters)
+    N = 50 #60 #60    # number of grid points
+    H = 10    # depth (meters)
     dz = H/N  # grid spacing - may need to adjust to reduce oscillations
     dt = 10  # (seconds) size of time step 
     M  = 300 #360 #00 #000 # 50000  #500 #
@@ -91,8 +91,8 @@ function run_my_model(file_out_name::String)
 
 
     # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
-    Ns = 2                  # Number of sediment size classes
-    ssc0 = zeros(N, Ns) .+ 1e5     # Matrix for sediment concentration (Nz x Ns)
+    Ns = 5                  # Number of sediment size classes
+    ssc0 = zeros(N, Ns) .+ 1 #1e5     # Matrix for sediment concentration (Nz x Ns)
     
 
     D = LinRange(1, 20, Ns) .* 1e-6     # Sediment grain sizes (\mu m )
@@ -192,7 +192,7 @@ function run_my_model(file_out_name::String)
         # [8] Advance sediment concentrations for each size class
         ssc = variables["SSC"]
         print("KZ = ", variables["Kz"])
-        variables["Kz"] = zeros(N)
+        # variables["Kz"] = zeros(N)
         gamma = zeros(N)
         # for ix in 1:N            # ssc @ z, num sed classes, shear
         #     # println("calculating sediment class @ depth $ix ")
@@ -207,7 +207,7 @@ function run_my_model(file_out_name::String)
             println("\n i_sed_class : $i_sed_class, ws: $(ws[i_sed_class])")
             println("Before:", ssc[:,i_sed_class])
 
-            s0 = advance_sediment(variables, ssc[:,i_sed_class], ws[i_sed_class], gamma, discretization)
+            s0 = advance_sediment2(variables, ssc[:,i_sed_class], -ws[i_sed_class], gamma, discretization)
             ssc[:, i_sed_class] = s0 
             println(ssc[:,i_sed_class])
             println("--------------------------------------------------\n\n\n")
@@ -299,7 +299,6 @@ function run_my_model(file_out_name::String)
     v[:] = collect(1:nt) #model_time
 
     for var in var2save
-        # println(var)
         v = defVar(ds, var, Float64,("z","time"), attrib = OrderedDict(
         "units" =>  units_dict[var], "long_name" => var2name[var]))
         v[:,:] = output[var];

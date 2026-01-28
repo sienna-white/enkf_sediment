@@ -205,6 +205,56 @@ end
 
 
 
+
+function advance_sediment2(variables, C_past, ws, gamma, discretization) #C_past, Kz_past, sediment_type, gamma, discretization, ws)
+    N = discretization["N"]
+    beta = discretization["beta"]
+    dt = discretization["dt"]
+    dz = discretization["dz"]
+    println(" Running : advance_sediment2")
+
+    Kz_past = variables["Kz"]
+    aA, bA, cA, dA = initialize_abcd(N)
+    wsdtdz = abs(ws*dt)/dz
+    cA = zeros(N)
+
+     # All sediment is sinking 
+    for i in 2:(N-1)
+        aA[i]  = -wsdtdz - beta/2 * (Kz_past[i-1]+ Kz_past[i]) 
+        bA[i]  = 1 + wsdtdz - gamma[i]*dt  + beta/2*(Kz_past[i+1] + 2*Kz_past[i] + Kz_past[i-1]) 
+        cA[i]  = -beta/2 * (Kz_past[i] + Kz_past[i+1])
+        dA[i]  = C_past[i]
+    end 
+    # # All sediment is sinking 
+    # for i in 2:(N-1)
+    #     aA[i]  = -wsdtdz - beta/2 * (Kz_past[i-1]+ Kz_past[i]) 
+    #     bA[i]  = 1 + wsdtdz - gamma[i]*dt  + beta/2*(Kz_past[i+1] + 2*Kz_past[i] + Kz_past[i-1]) 
+    #     cA[i]  = -beta/2 * (Kz_past[i] + Kz_past[i+1])
+    #     dA[i]  = C_past[i]
+    # end 
+        
+    # Bottom-Boundary: no flux for scalars
+    bA[1] =  1 + wsdtdz - (gamma[1]*dt)  + beta/2*(Kz_past[2] + Kz_past[1]) 
+    cA[1] =  -wsdtdz  - beta/2 * (Kz_past[2] + Kz_past[1])
+    dA[1] =  C_past[1]
+
+    # Top-Boundary: no flux for scalars
+    aA[end] =  0 -beta/2 * (Kz_past[end] + Kz_past[end-1])
+    bA[end] =  1 + wsdtdz - gamma[end]*dt  + beta/2 * (Kz_past[end] + Kz_past[end-1])  # okay adding this here 
+    dA[end] = C_past[end]   
+    
+    println("aA=", aA)
+    println("bA=", bA)
+    println("cA=", cA)
+    println("dA=", dA)
+    # Solve the tridiagonal system
+    A = TDMA(aA, bA, cA, dA, N) 
+    
+    return A
+end 
+
+
+
 function advance_sediment(variables, C_past, ws, gamma, discretization)
     N = discretization["N"]
     beta = discretization["beta"]
@@ -216,7 +266,7 @@ function advance_sediment(variables, C_past, ws, gamma, discretization)
     Kz_past = variables["Kz"]
 
     println("C_past past = ", C_past)
-    wsdtdz = (ws*dt)/dz
+    wsdtdz = abs(ws*dt)/dz
 
     for i in 2:(N-1)
         aA[i]  = -wsdtdz - beta/2 * (Kz_past[i-1]+ Kz_past[i]) 
