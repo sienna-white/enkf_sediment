@@ -57,7 +57,7 @@ function run_my_model(file_out_name::String)
     H = 10    # depth (meters)
     dz = H/N  # grid spacing - may need to adjust to reduce oscillations
     dt = 10  # (seconds) size of time step 
-    M  = 300 #360 #00 #000 # 50000  #500 #
+    M  = 3600 #360 #00 #000 # 50000  #500 #
 
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
     isave = 1 # 6 #1000
@@ -194,10 +194,10 @@ function run_my_model(file_out_name::String)
         print("KZ = ", variables["Kz"])
         # variables["Kz"] = zeros(N)
         gamma = zeros(N)
-        # for ix in 1:N            # ssc @ z, num sed classes, shear
-        #     # println("calculating sediment class @ depth $ix ")
-        #     gamma[ix,:] = run_floc_mod(ssc[ix,:], Ns, 2)
-        # end
+        for ix in 1:N            # ssc @ z, num sed classes, shear
+            # println("calculating sediment class @ depth $ix ")
+            gamma[ix,:] = run_floc_mod(ssc[ix,:], Ns, 2)
+        end
         # 
         # println("gamma = ", gamma)
         println(" **** $i ******************************** ")
