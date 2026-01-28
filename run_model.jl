@@ -57,7 +57,7 @@ function run_my_model(file_out_name::String)
     H = 10    # depth (meters)
     dz = H/N  # grid spacing - may need to adjust to reduce oscillations
     dt = 10  # (seconds) size of time step 
-    M  = 200  #360 #00 #000 # 50000  #500 #
+    M  = 3600  #360 #00 #000 # 50000  #500 #
 
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
     isave = 1 # 6 #1000
@@ -88,8 +88,8 @@ function run_my_model(file_out_name::String)
 
 
     # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
-    Ns = 5                  # Number of sediment size classes
-    ssc0 = zeros(N, Ns) .+ 1 #1e5     # Matrix for sediment concentration (Nz x Ns)
+    Ns = 10                  # Number of sediment size classes
+    ssc0 = zeros(N, Ns) .+ 1e5     # Matrix for sediment concentration (Nz x Ns)
     
     D = LinRange(1, 20, Ns) .* 1e-6     # Sediment grain sizes (\mu m )
     D = collect(D)
@@ -195,7 +195,7 @@ function run_my_model(file_out_name::String)
         # 
         println("gamma = ", gamma)
         for i_sed_class in 1:Ns                          # ssc ~ (Nz x Ns)
-            s0 = advance_sediment2(variables, ssc[:,i_sed_class], -ws[i_sed_class], gamma[:,i_sed_class], discretization)
+            s0 = advance_sediment3(variables, ssc[:,i_sed_class], -ws[i_sed_class], gamma[:,i_sed_class], discretization)
             ssc[:, i_sed_class] = s0 
         end
 

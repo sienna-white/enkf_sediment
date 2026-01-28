@@ -114,6 +114,7 @@ end
 
 
 function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real)
+    println("[1] Mass = ", sum(n .* mass[]))  # check mass conservation
 
     g1_ = zeros(N)
     l1_ = zeros(N)
@@ -126,15 +127,17 @@ function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real)
         g2_[k] = g2(n, k, G, N)
         l2_[k] = l2(n, k, G)
     end 
-
+    
+    change = zeros(N)
     for i in 1:N
       #          agg (+)  agg(-)  shear(+)   shear(-)
-        n[i]  +=  g1_[i] - l1_[i] + g2_[i]  - l2_[i]
+        change[i]  =  g1_[i] - l1_[i] + g2_[i]  - l2_[i]
         # println("n[$i] = $(n[i])")
         # println(" g1 = $(g1_[i]), l1 = $(l1_[i]), g2 = $(g2_[i]), l2 = $(l2_[i])")
     end 
-    println("n[1:10] = $(n)")
-    return n
+    # println("n[1:10] = $(n)")
+    println("[2] Mass change = ", sum(change .* mass[]))  # check mass conservation
+    return change
 
 end 
 
