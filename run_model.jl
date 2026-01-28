@@ -57,7 +57,7 @@ function run_my_model(file_out_name::String)
     H = 10    # depth (meters)
     dz = H/N  # grid spacing - may need to adjust to reduce oscillations
     dt = 10  # (seconds) size of time step 
-    M  = 3600 #360 #00 #000 # 50000  #500 #
+    M  = 200  #360 #00 #000 # 50000  #500 #
 
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
     isave = 1 # 6 #1000
@@ -67,7 +67,6 @@ function run_my_model(file_out_name::String)
 
     # Create depth vector 
     z = collect(H:-dz:dz) .- dz/2 # depth vector
-    # println("Length of z is ", length(z))
 
     #********************** FIXED CONSTANTS  ***************************
     rhoA = 1.23                     # Density of air, kg/m^3
@@ -77,8 +76,6 @@ function run_my_model(file_out_name::String)
     c_d = 0.05                      # Drag coefficient [-]
     cm2m = 0.01
     hr2s = 1/3600
-
-
 
     #********************** DEFINE HYDRODYNAMIC FORCINGS ***************************
     # (1) PRESSURE 
@@ -94,7 +91,6 @@ function run_my_model(file_out_name::String)
     Ns = 5                  # Number of sediment size classes
     ssc0 = zeros(N, Ns) .+ 1 #1e5     # Matrix for sediment concentration (Nz x Ns)
     
-
     D = LinRange(1, 20, Ns) .* 1e-6     # Sediment grain sizes (\mu m )
     D = collect(D)
     println("Sediment grain sizes (m) = ", D)
@@ -102,7 +98,7 @@ function run_my_model(file_out_name::String)
     # initialize once
     init_params!(D, Ns)
 
-    # settling velocities for each size class
+    # Calculate settling velocities for each size class
     ws = floc_mod.ws[] .* 10
     println("Settling velocities (m/s) = ", ws)
     for i in 1:Ns
@@ -191,27 +187,16 @@ function run_my_model(file_out_name::String)
         # ***************************************************************
         # [8] Advance sediment concentrations for each size class
         ssc = variables["SSC"]
-        print("KZ = ", variables["Kz"])
-        # variables["Kz"] = zeros(N)
-        gamma = zeros(N)
+        gamma = similar(ssc)
         for ix in 1:N            # ssc @ z, num sed classes, shear
-            # println("calculating sediment class @ depth $ix ")
-            gamma[ix,:] = run_floc_mod(ssc[ix,:], Ns, 2)
+            gamma[ix,:] .= run_floc_mod(ssc[ix,:], Ns, 2)
+            println("gamma at depth index $ix: ", gamma[ix,:])
         end
         # 
-        # println("gamma = ", gamma)
-        println(" **** $i ******************************** ")
+        println("gamma = ", gamma)
         for i_sed_class in 1:Ns                          # ssc ~ (Nz x Ns)
-            # println(ws[ix])
-            
-            println("\n i_sed_class : $i_sed_class, ws: $(ws[i_sed_class])")
-            println("Before:", ssc[:,i_sed_class])
-
-            s0 = advance_sediment2(variables, ssc[:,i_sed_class], -ws[i_sed_class], gamma, discretization)
+            s0 = advance_sediment2(variables, ssc[:,i_sed_class], -ws[i_sed_class], gamma[:,i_sed_class], discretization)
             ssc[:, i_sed_class] = s0 
-            println(ssc[:,i_sed_class])
-            println("--------------------------------------------------\n\n\n")
-            
         end
 
         

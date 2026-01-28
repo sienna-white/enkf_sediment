@@ -211,12 +211,12 @@ function advance_sediment2(variables, C_past, ws, gamma, discretization) #C_past
     beta = discretization["beta"]
     dt = discretization["dt"]
     dz = discretization["dz"]
-    println(" Running : advance_sediment2")
+    # println(" Running : advance_sediment2")
 
     Kz_past = variables["Kz"]
     aA, bA, cA, dA = initialize_abcd(N)
     wsdtdz = abs(ws*dt)/dz
-    cA = zeros(N)
+    # cA = zeros(N)
 
      # All sediment is sinking 
     for i in 2:(N-1)
@@ -243,10 +243,10 @@ function advance_sediment2(variables, C_past, ws, gamma, discretization) #C_past
     bA[end] =  1 + wsdtdz - gamma[end]*dt  + beta/2 * (Kz_past[end] + Kz_past[end-1])  # okay adding this here 
     dA[end] = C_past[end]   
     
-    println("aA=", aA)
-    println("bA=", bA)
-    println("cA=", cA)
-    println("dA=", dA)
+    # println("aA=", aA)
+    # println("bA=", bA)
+    # println("cA=", cA)
+    # println("dA=", dA)
     # Solve the tridiagonal system
     A = TDMA(aA, bA, cA, dA, N) 
     

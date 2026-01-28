@@ -130,7 +130,10 @@ function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real)
     for i in 1:N
       #          agg (+)  agg(-)  shear(+)   shear(-)
         n[i]  +=  g1_[i] - l1_[i] + g2_[i]  - l2_[i]
+        # println("n[$i] = $(n[i])")
+        # println(" g1 = $(g1_[i]), l1 = $(l1_[i]), g2 = $(g2_[i]), l2 = $(l2_[i])")
     end 
+    println("n[1:10] = $(n)")
     return n
 
 end 
