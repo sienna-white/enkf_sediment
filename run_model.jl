@@ -27,7 +27,7 @@ using .floc_mod
 # fout_name = ARGS[5]
 
 
-function run_my_model(file_out_name::String)
+function run_my_model(file_out_name::String, floc_on::Bool=true)
 
     # println("Running model with ws1 = $ws1, ws2 = $ws2, pmax1 = $pmax1, pmax2 = $pmax2.. \n output file name = $file_out_name \n")
 
@@ -50,7 +50,7 @@ function run_my_model(file_out_name::String)
     #***********************************************************************
 
     
-
+    @info "Floc on = $floc_on"
 
     #********************** SPATIAL DOMAIN  ***************************
     N = 50 #60 #60    # number of grid points
@@ -88,10 +88,10 @@ function run_my_model(file_out_name::String)
 
 
     # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
-    Ns = 10                  # Number of sediment size classes
-    ssc0 = zeros(N, Ns) .+ 1e5     # Matrix for sediment concentration (Nz x Ns)
+    Ns = 100                  # Number of sediment size classes
+    ssc0 = zeros(N, Ns) .+ 1e6     # Matrix for sediment concentration (Nz x Ns)
     
-    D = LinRange(1, 20, Ns) .* 1e-6     # Sediment grain sizes (\mu m )
+    D = LinRange(1e-1, 200, Ns) .* 1e-6     # Sediment grain sizes (\mu m )
     D = collect(D)
     println("Sediment grain sizes (m) = ", D)
 
@@ -99,7 +99,7 @@ function run_my_model(file_out_name::String)
     init_params!(D, Ns)
 
     # Calculate settling velocities for each size class
-    ws = floc_mod.ws[] .* 10
+    ws = floc_mod.ws[]  #.* 10
     println("Settling velocities (m/s) = ", ws)
     for i in 1:Ns
         CFL = ws[i] * dt / dz
@@ -151,7 +151,7 @@ function run_my_model(file_out_name::String)
     save2output(1, 1, "Nu", variables["Nu"])
     save_sediment2output(1, 1, ssc0)
 
-    W0 = 3 
+    W0 = 7
     for i in 2:(M-1)
 
 
@@ -173,7 +173,9 @@ function run_my_model(file_out_name::String)
         Q2 = advance_Q2(variables, ustar, discretization) 
         Q = @. sqrt(Q2)   
         Q2L = advance_Q2L(variables, ustar, discretization)
-    
+        
+        turbulent_shear = (Q2 ./ Q2L) .* Q
+        # println("Shear = ", turbulent_shear)
         # [5] Advance temperature 
         C = advance_scalar(variables, discretization) 
 
@@ -187,13 +189,17 @@ function run_my_model(file_out_name::String)
         # ***************************************************************
         # [8] Advance sediment concentrations for each size class
         ssc = variables["SSC"]
-        gamma = similar(ssc)
-        for ix in 1:N            # ssc @ z, num sed classes, shear
-            gamma[ix,:] .= run_floc_mod(ssc[ix,:], Ns, 2)
-            println("gamma at depth index $ix: ", gamma[ix,:])
+
+        gamma = similar(ssc) 
+        if floc_on 
+            for ix in 1:N            # ssc @ z, num sed classes, shear
+                gamma[ix,:] .= run_floc_mod(ssc[ix,:], Ns, turbulent_shear[ix])
+                # println("gamma at depth index $ix: ", gamma[ix,:])
+            end
+        else
+            gamma .= 0
         end
-        # 
-        println("gamma = ", gamma)
+        # println("gamma = ", gamma)
         for i_sed_class in 1:Ns                          # ssc ~ (Nz x Ns)
             s0 = advance_sediment3(variables, ssc[:,i_sed_class], -ws[i_sed_class], gamma[:,i_sed_class], discretization)
             ssc[:, i_sed_class] = s0 
@@ -250,7 +256,7 @@ function run_my_model(file_out_name::String)
     # times_unique = unique(times) 
     nt = div(M,isave) + 1
     
-    ds = NCDataset("hydro1.nc" ,"c")
+    ds = NCDataset(file_out_name,"c")
     ds.attrib["title"] = "testing"
 
     # model_time = collect(1:M)
@@ -296,8 +302,8 @@ function run_my_model(file_out_name::String)
 
 end 
 
-file_out_name = @sprintf("hydro.nc") 
-run_my_model("hydro1.nc")
+# file_out_name = @sprintf("hydro.nc") 
+run_my_model("hydro_FlocOff.nc", false)
 
 
 

@@ -87,7 +87,6 @@ function calculate_density(D::Vector{<:Real}, N::Int)
     # returns: density of a particle in size class i (kg/m^3)
     density_ = zeros(N)
     for i in 1:N
-        println(i)
         density_[i] = ρ_w + (ρ_s - ρ_w) * (Dp/D[i])^(nf - 3)
     end 
     return density_
@@ -114,7 +113,7 @@ end
 
 
 function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real)
-    println("[1] Mass = ", sum(n .* mass[]))  # check mass conservation
+    # println("[1] Mass = ", sum(n .* mass[]))  # check mass conservation
 
     g1_ = zeros(N)
     l1_ = zeros(N)
@@ -136,7 +135,10 @@ function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real)
         # println(" g1 = $(g1_[i]), l1 = $(l1_[i]), g2 = $(g2_[i]), l2 = $(l2_[i])")
     end 
     # println("n[1:10] = $(n)")
-    println("[2] Mass change = ", sum(change .* mass[]))  # check mass conservation
+    n_new = n .+ change
+    n_adj = flocmod_mass_redistribute(n_new, N)
+    change = n_adj .- n
+    # println("[2] Mass change = ", sum(change .* mass[]))  # check mass conservation
     return change
 
 end 
@@ -236,6 +238,57 @@ function l2( n::Vector{<:Float64}, k::Int, G::Real)
 end
 
 
+function flocmod_mass_redistribute(n::Vector{<:Float64}, N::Int)
+    # Redistribute negative masses in NN toward positive ones,
+    # setting negatives to zero. converted to python from original fortran code 
+    # by SW on 1/22/2025 with help from chatgpt. 
+
+    # Parameters
+    # ----------
+    # n : Number of particles per floc size class 
+    # N : Number of particle size classes
+
+    # Returns
+    # -------
+    # n : modified (no negatives) number of particles per floc size class 
+
+
+
+    # Temporary copy
+    NNtmp = copy(n)
+
+    # Identify negative and positive entries
+    neg_mask = n .< 0.0
+    pos_mask = n .> 0.0
+
+    # Toal negative mass (weighted by f_mass)
+    mneg = -sum(n[neg_mask] .* mass[][neg_mask])
+
+    # Number of positive bins
+    npos = sum(pos_mask)
+
+    # Set negative entries to zero in temporary array
+    NNtmp[neg_mask] .= 0.0
+
+    # println("There is negative mass to redistribute: $(mneg)")
+    if mneg > 0.0
+        if npos == 0
+            @error "CAUTION: all floc sizes have negative mass! "
+            exit(1)
+        total_positive = sum(NNtmp)
+        end 
+
+        # Redistribute negative mass linearly over positive classes
+        for iv in 1:N
+            if n[iv] > 0.0
+                n[iv] = (n[iv]  - (mneg / total_positive)* n[iv]/ f_mass[iv])
+            else
+                n[iv] = 0.0
+            end 
+        end 
+    end 
+    return n 
+end 
 
 
 end
@@ -268,4 +321,5 @@ end
 # for i in 1:N                  
 #     D_ratio_4_B[i] = D[i] * β * abs((D[i] - Dp)/Dp)^β_3
 # end 
+
 
