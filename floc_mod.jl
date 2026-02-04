@@ -25,7 +25,7 @@ const D_ratio_4_B = Ref{Vector{Float64}}()
 const ws = Ref{Vector{Float64}}()
 const mass = Ref{Vector{Float64}}()
 const floc_density = Ref{Vector{Float64}}()
-
+const mass_frac = Ref{Vector{Float64}}()
 
 function init_params!(D::Vector{<:Real}, N::Int)
 
@@ -56,7 +56,7 @@ function init_params!(D::Vector{<:Real}, N::Int)
     closest_half_mass[] = closest_half_mass0
     collision_matrix[] = collision_matrix0
     D_ratio_4_B[] = D_ratio_4_B0
-
+    mass_frac[] = calculate_mass_frac(N)
     @info "\t initialized collision matrix, half-mass indices, and D ratio for break-up ..."
 
     return nothing
@@ -109,6 +109,21 @@ function calculate_mass(D::Vector{<:Real}, N=N::Int)
 end 
 
 
+
+function calculate_mass_frac(N::Int)
+    # calculate the density of a floc in size class i
+    # parameters:
+    #   ρ_w: particle density (kg/m^3)
+    #   D: array of particle diameters (m)
+    # returns: density of a particle in size class i (kg/m^3)
+    total_mass = sum(mass[])
+    mass_fraction_ = zeros(N)
+    for i in 1:N
+        mass_fraction_[i] = mass[][i] / total_mass
+    end 
+    return mass_fraction_
+end 
+
 # ******************** Flocculation functions ************************
 
 
@@ -126,19 +141,34 @@ function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real)
         g2_[k] = g2(n, k, G, N)
         l2_[k] = l2(n, k, G)
     end 
-    
+
+    println("Total growth due to aggregation: ", sum(g1_ .* mass[]))
+    println("Total loss due to aggregation: ", sum(l1_ .* mass[]))
+    println("Total growth due to shear break-up: ", sum(g2_ .* mass[]))
+    println("Total loss due to shear break-up: ", sum(l2_ .* mass[])) 
     change = zeros(N)
     for i in 1:N
       #          agg (+)  agg(-)  shear(+)   shear(-)
         change[i]  =  g1_[i] - l1_[i] + g2_[i]  - l2_[i]
+        # change[i]  =  g2_[i]  - l2_[i]
+
         # println("n[$i] = $(n[i])")
         # println(" g1 = $(g1_[i]), l1 = $(l1_[i]), g2 = $(g2_[i]), l2 = $(l2_[i])")
     end 
     # println("n[1:10] = $(n)")
     n_new = n .+ change
+    mass_change = sum(change .* mass[])
+    println("[1.5] Mass change = ", mass_change)  # check mass conservation
+
+    for i in 1:N
+        change[i] = change[i] - mass_change*mass_frac[][i]*n[i]
+        
+    end 
+
     n_adj = flocmod_mass_redistribute(n_new, N)
     change = n_adj .- n
-    # println("[2] Mass change = ", sum(change .* mass[]))  # check mass conservation
+    println("[2] Mass change = ", sum(change .* mass[]))  # check mass conservation
+
     return change
 
 end 
@@ -173,7 +203,7 @@ function g1(n::Vector{<:Float64}, k::Int, G::Real)
             end
         end
     end
-    g1_ *= 0.64 #5 SW adjustment for mass conservation. 
+    g1_ = g1_ * 5 #0.64 #5 SW adjustment for mass conservation. 
     return g1_
 end
 
@@ -227,7 +257,8 @@ function g2(n::Vector{<:Float64}, k::Int, G::Real,  N::Int)
     for i in (k+1):N
         g2_ += FDBS(k,i,N) * B(i, G) * n[i]
     end
-    return g2_
+
+    return abs(g2_)
 end
 
 
@@ -275,13 +306,12 @@ function flocmod_mass_redistribute(n::Vector{<:Float64}, N::Int)
         if npos == 0
             @error "CAUTION: all floc sizes have negative mass! "
             exit(1)
-        total_positive = sum(NNtmp)
         end 
-
+        total_positive = sum(NNtmp)
         # Redistribute negative mass linearly over positive classes
         for iv in 1:N
             if n[iv] > 0.0
-                n[iv] = (n[iv]  - (mneg / total_positive)* n[iv]/ f_mass[iv])
+                n[iv] = (n[iv]  - (mneg / total_positive)* n[iv]/ mass[][iv])
             else
                 n[iv] = 0.0
             end 

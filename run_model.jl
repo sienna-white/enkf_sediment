@@ -17,23 +17,10 @@ include("hydro/advance_variables.jl")
 # include("hydro/phytoplankton.jl")
 include("hydro/forcings.jl") 
 include("hydro/output.jl")
-# include("floc_mod.jl")
 include("floc_mod.jl")
 using .floc_mod
-# ws1 = parse(Float64, ARGS[1])
-# ws2 = parse(Float64, ARGS[2])
-# pmax1 = parse(Float64, ARGS[3])
-# pmax2 = parse(Float64, ARGS[4])
-# fout_name = ARGS[5]
-
 
 function run_my_model(file_out_name::String, floc_on::Bool=true)
-
-    # println("Running model with ws1 = $ws1, ws2 = $ws2, pmax1 = $pmax1, pmax2 = $pmax2.. \n output file name = $file_out_name \n")
-
-    #***********************************************************************
-
-
 
     #***********************************************************************
     # Wind time series 
@@ -86,7 +73,6 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     # Wind = 1                       # u_star =m/s >> 0.05 is  drag coefficient, 10 is my wind speed 
     # WIND = (c_d * Wind)^2 * rhoA   # this is rho * u*^2
 
-
     # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
     Ns = 100                  # Number of sediment size classes
     ssc0 = zeros(N, Ns) .+ 1e6     # Matrix for sediment concentration (Nz x Ns)
@@ -117,12 +103,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
     # Initial dictionary to store variables
     variables = Dict() 
-    # "U" => U, "C" => C, "N_BV2" => N_BV2, 
-    #                 "Nu" => nu_t, "Q2" => Q2, "Q2L" => Q2L, 
-    #                 "Kq" => Kq, "Kz" => Kz, "L" => L
-
     Times = collect(0:dt:(M*dt))
-    # println("Times = ", Times)
 
     variables["U"] = similar(z) .+ 1e-1
     variables["C"] = similar(z) .+ 26
