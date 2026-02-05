@@ -22,7 +22,7 @@ using .floc_mod
 # println("hello")
 
 # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
-Ns = 100                  # Number of sediment size classes
+Ns = 45                  # Number of sediment size classes
 
 D = LinRange(1, 200, Ns) .* 1e-6     # Sediment grain sizes (\mu m )
 D = collect(D)
@@ -35,12 +35,12 @@ init_params!(D, Ns)
 ws = floc_mod.ws[] 
 # println("Settling velocities (m/s) = ", ws)
 
-ssc0 = zeros(Ns) .+ 1e6     # Matrix for sediment concentration (Nz x Ns)
+ssc0 = zeros(Ns) #.+ 500    # Matrix for sediment concentration (Nz x Ns)
+ssc0[23] = 500
+turbulent_shear = 2 #0.5
 
-turbulent_shear = 0.5
 
-
-NFRAMES=6 
+NFRAMES=1000
 output = zeros(Ns, NFRAMES)
 output[:,1] = ssc0
 
@@ -48,9 +48,13 @@ anim = @animate for i in 2:NFRAMES
         print("Frame $i \n")
         N0 = output[:,i-1]
         N1 = run_floc_mod(N0, Ns, turbulent_shear)
-        scatter(D, N1,  title="Frame $i", legend=false) #xlim=(0,1), ylim=(0,1),
+        scatter(D.*1e6, N1,  title="Frame $i", legend=false) #xlim=(0,1), ylim=(0,1),
         output[:,i] = N1 
+        println("N1 = ", N1)
+        # set xlabel
+        xlabel!("Particle Diameter (um)")
+        ylabel!("N. particles")
 end 
 
-gif(anim, "animated_scatter.gif", fps = 1)
+gif(anim, "animated_scatter.gif", fps = 35)
  

@@ -105,6 +105,8 @@ function calculate_mass(D::Vector{<:Real}, N=N::Int)
     for i in 1:N
         mass_[i] = floc_density[][i] * π/6 * D[i]^3 * (D[i]/Dp)^nf 
     end 
+    @info "\t Initial mass of sediment is $(sum(mass_)) kg/m^3"
+
     return mass_
 end 
 
@@ -118,8 +120,8 @@ function calculate_mass_frac(N::Int)
     # returns: density of a particle in size class i (kg/m^3)
     total_mass = sum(mass[])
     mass_fraction_ = zeros(N)
-    for i in 1:N
-        mass_fraction_[i] = mass[][i] / total_mass
+    for i in 1:N #mass[][i]
+        mass_fraction_[i] = 1 / total_mass
     end 
     return mass_fraction_
 end 
@@ -156,20 +158,23 @@ function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real)
         # println(" g1 = $(g1_[i]), l1 = $(l1_[i]), g2 = $(g2_[i]), l2 = $(l2_[i])")
     end 
     # println("n[1:10] = $(n)")
-    n_new = n .+ change
+    # n_new = n .+ change
     mass_change = sum(change .* mass[])
-    println("[1.5] Mass change = ", mass_change)  # check mass conservation
+    println("[1] Mass change = ", mass_change)  # check mass conservation
 
     for i in 1:N
-        change[i] = change[i] - mass_change*mass_frac[][i]*n[i]
-        
-    end 
+        # println("\tChange[$i] = $(change[i]) before mass adj")
+        change[i] = change[i] - mass_change*mass_frac[][i] #*n[i]
+        # println("\tshifting by", mass_change*mass_frac[][i])
+        # println("\tChange[$i] = $(change[i]) after mass adj")
 
+    end 
+    n_new = n .+ (change .* 60) 
     n_adj = flocmod_mass_redistribute(n_new, N)
     change = n_adj .- n
     println("[2] Mass change = ", sum(change .* mass[]))  # check mass conservation
-
-    return change
+    
+    return n_adj
 
 end 
 
@@ -203,7 +208,7 @@ function g1(n::Vector{<:Float64}, k::Int, G::Real)
             end
         end
     end
-    g1_ = g1_ * 5 #0.64 #5 SW adjustment for mass conservation. 
+    g1_ = g1_ * 10000 #0.64 #5 SW adjustment for mass conservation. 
     return g1_
 end
 
@@ -214,7 +219,7 @@ function l1(n::Vector{<:Float64}, k::Int, G::Real, N::Int)
     for i in 1:(N-1)  # note this is N in original flocmod equations 
         l1_ += α * A(G,i,k) * n[i] * n[k] 
     end 
-    return l1_
+    return l1_/2
 end 
 
 ######################### Shear break-up #########################
@@ -229,7 +234,7 @@ function FDBS(k::Int, i::Int,  N::Int)
     # SW adding this since no mass is exactly half of another mass
     # instead, we find the class w/ the closest mass to half the mass of floc k
     j1 = closest_half_mass[][i]
-    if k == j1 
+    if k == i//2 
         FDBS_ = 2
     else 
         FDBS_ = 0
