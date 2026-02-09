@@ -66,8 +66,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
     #********************** DEFINE HYDRODYNAMIC FORCINGS ***************************
     # (1) PRESSURE 
-    Px0 = 2e-6          # Pressure gradient forcing
-    T_Px = 12           # Period [hours] on pressure gradient forcing. Set to 0 for steady
+    Px0 = 2e-4          # Pressure gradient forcing
+    T_Px = 0 #12           # Period [hours] on pressure gradient forcing. Set to 0 for steady
 
     # (2) Wind
     # Wind = 1                       # u_star =m/s >> 0.05 is  drag coefficient, 10 is my wind speed 
@@ -132,9 +132,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     save2output(1, 1, "Nu", variables["Nu"])
     save_sediment2output(1, 1, ssc0)
 
-    W0 = 7
+    W0 = 0
     for i in 2:(M-1)
-
 
         time = Times[i];
 
