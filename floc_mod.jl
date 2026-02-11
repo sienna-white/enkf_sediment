@@ -8,18 +8,18 @@ export init_params!, run_floc_mod
 
 # **************** Fixed constants ***************
 const g = 9.81            # gravitational constant [m/s^2]
-const ν = 1.3e-6          # visosity of water [m^2/s]
+const ν = 1.5e-6 # temp1.3e-6          # visosity of water [m^2/s] 
 const ρ_w = 1000          # density of water [kg/m^3]
 const ρ_s = 2650          # density of sediment kg/m^3
-const α = 1.5 
+const α = 0.55 #1.5 
 
 # ************************************************
-const nf = 2.0                # fractal dimension exponent
+const nf = 1.9 #2.0                # fractal dimension exponent
 const Dp = 4 * 1e-6           # reference diameter (m)
 const Fy = 1e-10              # yield strength (N)
 const β_2 = 1.5            # winterwerp (2002)
 const β_3 = 3 - nf         # winterwerp (2002)
-const β = 0.1
+const β = 0.12 #0.1
 const total_mass = Ref{Float64}() # total mass of sediment (kg/m^3)
 const closest_half_mass = Ref{Vector{Int}}()
 const collision_matrix = Ref{Matrix{Float64}}()
@@ -233,8 +233,8 @@ function FDBS(k::Int, i::Int,  N::Int)
     # SW adding this since no mass is exactly half of another mass
     # instead, we find the class w/ the closest mass to half the mass of floc k
     j1 = closest_half_mass[][i]
-    if k == j1 #div(i,2)  # j1 #
-        FDBS_ = (mass[][i] / mass[][k])  #* 2
+    if k == j1 #div(i,2) 
+        FDBS_ = (mass[][i] / mass[][k])  
     else 
         FDBS_ = 0
 
