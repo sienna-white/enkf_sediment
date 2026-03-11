@@ -268,7 +268,7 @@ end
 
 function l2( n::Vector{<:Float64}, k::Int, G::Real)
     # Loss due to shear break-up for class k
-    l2_ = B(k, G) * n[k]  #* mass[][i]/mass[][k] 
+    l2_ = B(k, G) * n[k] #* mass[][i]/mass[][k] 
     return l2_
 end
 
