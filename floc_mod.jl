@@ -11,15 +11,15 @@ const g = 9.81            # gravitational constant [m/s^2]
 const ν = 1.5e-6 # temp1.3e-6          # visosity of water [m^2/s] 
 const ρ_w = 1000          # density of water [kg/m^3]
 const ρ_s = 2650          # density of sediment kg/m^3
-const α = 0.55 #1.5 
+const α = 200 #4.5 #1.5  #0.55
 
 # ************************************************
-const nf = 1.9 #2.0                # fractal dimension exponent
-const Dp = 4 * 1e-6           # reference diameter (m)
+const nf = 2.2 #2.1 #1.9 #2.0                # fractal dimension exponent
+const Dp =  1e-6           # reference diameter (m)
 const Fy = 1e-10              # yield strength (N)
-const β_2 = 1.5            # winterwerp (2002)
+const β_2 = 1.8 #1.5            # winterwerp (2002)
 const β_3 = 3 - nf         # winterwerp (2002)
-const β = 0.12 #0.1
+const β = 0.06 #0.12 #0.1
 const total_mass = Ref{Float64}() # total mass of sediment (kg/m^3)
 const closest_half_mass = Ref{Vector{Int}}()
 const collision_matrix = Ref{Matrix{Float64}}()
@@ -37,6 +37,8 @@ function init_params!(D::Vector{<:Real}, N::Int, n::Vector{<:Float64})
     floc_density[] = calculate_density(D, N)
     ws[] = calculate_w_s(D, N)
     mass[] = calculate_mass(D, N)
+    @info "\t mass = $(mass[]) kg/particle"
+
     
     @info "\t initialized density, settling velocity, and floc mass..."
     closest_half_mass0 = zeros(N)
@@ -61,7 +63,7 @@ function init_params!(D::Vector{<:Real}, N::Int, n::Vector{<:Float64})
     mass_frac[] = calculate_mass_frac(N)
     @info "\t initialized collision matrix, half-mass indices, and D ratio for break-up ..."
     total_mass[] = sum(mass[] .* n)
-    @info "\t Initial total mass of sediment is $(total_mass[]) kg/m^3"
+    @info "\t Initial total mass of sediment is $(total_mass[]*1000) mg/L"
 
     return nothing
 
@@ -106,8 +108,9 @@ function calculate_mass(D::Vector{<:Real}, N=N::Int)
     #   nf: fractal dimension exponent
     # returns: mass of a particle in size class i (kg)
     mass_ = zeros(N)
-    for i in 1:N
-        mass_[i] = floc_density[][i] * π/6 * D[i]^3 * (D[i]/Dp)^nf 
+    for i in 1:N # floc_density[][i]
+        mass_[i] = ρ_s * π/6 * D[i]^3 * (D[i]/Dp)^nf 
+        println("i=$i D=$(D[i]) density=$(floc_density[][i]) mass=$(mass_[i])")
     end 
 
 
@@ -155,7 +158,7 @@ function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real, dt::Int)
         # println("\t i=$i n=$(n[i]) del=$(change[i]) // g1 = $(g1_[i]), l1 = $(l1_[i]), g2 = $(g2_[i]), l2 = $(l2_[i])")
     end 
 
-    n_new = n .+ (change .* dt) 
+    n_new = n .+ (change .* (dt*0.1) ) 
     new_mass =  sum(n_new .* mass[]) 
     mass_change = total_mass[] - new_mass
     # println("[1] Mass change = ", mass_change)  # check mass conservation
@@ -166,7 +169,7 @@ function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real, dt::Int)
             # println("$(mass_change/mass[][iv] * ((n_new[iv]* mass[][iv])/new_mass))")
         end 
     end 
-    # new_mass_change = total_mass[] - sum(n_new .* mass[])
+    new_mass_change = total_mass[] - sum(n_new .* mass[])
     # println("[2] Mass change = ", new_mass_change)  # check mass conservation
 
     n_new = flocmod_mass_redistribute(n_new, N)
@@ -201,13 +204,13 @@ function g1(n::Vector{<:Float64}, k::Int, G::Real)
     g1_ = 0.0 
     for j in 1:k
         for i in 1:k
-            if i + j == k
+            # if i + j == k
                 # j = k - i
-                g1_ += α * A(G,i,j) * n[i] * n[j] * (mass[][i] + mass[][j])/mass[][k] #* (mass[][i] + mass[][j])
-            end
+            g1_ += α * A(G,i,j) * n[i] * n[j] * (mass[][i] + mass[][j])/mass[][k] #* (mass[][i] + mass[][j])
+            # end
         end
     end
-    g1_ = g1_ * 0.5 #0.64 #5 SW adjustment for mass conservation. 
+    g1_ = g1_ #* 0.5 #0.64 #5 SW adjustment for mass conservation. 
     return g1_
 end
 
@@ -322,6 +325,7 @@ function flocmod_mass_redistribute(n::Vector{<:Float64}, N::Int)
 
     # Temporary copy
     NNtmp = copy(n)
+    
 
     # Identify negative and positive entries
     neg_mask = n .< 0.0
