@@ -4,22 +4,24 @@ using Printf
 # module load  julia/1.11.7
 module floc_mod
 using Printf
-export init_params!, run_floc_mod 
+export init_params!, run_floc_mod, return_parameter_space
 
 # **************** Fixed constants ***************
 const g = 9.81            # gravitational constant [m/s^2]
 const ν = 1.5e-6 # temp1.3e-6          # visosity of water [m^2/s] 
 const ρ_w = 1000          # density of water [kg/m^3]
 const ρ_s = 2650          # density of sediment kg/m^3
-const α = 200 #4.5 #1.5  #0.55
+const α = 1000 #4.5 #1.5  #0.55
+const α_2 = 1.2
+
 
 # ************************************************
 const nf = 2.2 #2.1 #1.9 #2.0                # fractal dimension exponent
 const Dp =  1e-6           # reference diameter (m)
 const Fy = 1e-10              # yield strength (N)
-const β_2 = 1.8 #1.5            # winterwerp (2002)
+const β_2 = 1.8 #1.8 #1.5            # winterwerp (2002)
 const β_3 = 3 - nf         # winterwerp (2002)
-const β = 0.06 #0.12 #0.1
+const β = 0.2 #0.06 #0.12 #0.1
 const total_mass = Ref{Float64}() # total mass of sediment (kg/m^3)
 const closest_half_mass = Ref{Vector{Int}}()
 const collision_matrix = Ref{Matrix{Float64}}()
@@ -37,7 +39,7 @@ function init_params!(D::Vector{<:Real}, N::Int, n::Vector{<:Float64})
     floc_density[] = calculate_density(D, N)
     ws[] = calculate_w_s(D, N)
     mass[] = calculate_mass(D, N)
-    @info "\t mass = $(mass[]) kg/particle"
+    # @info "\t mass = $(mass[]) kg/particle"
 
     
     @info "\t initialized density, settling velocity, and floc mass..."
@@ -135,6 +137,10 @@ end
 
 # ******************** Flocculation functions ************************
 
+function return_parameter_space()
+    # Returns a string of the parameter space for the current flocculation model parameters.
+    return nf, α, α_2, β, β_2, β_3
+end 
 
 function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real, dt::Int)
     # println("[1] Mass = ", sum(n .* mass[]))  # check mass conservation
@@ -158,7 +164,7 @@ function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real, dt::Int)
         # println("\t i=$i n=$(n[i]) del=$(change[i]) // g1 = $(g1_[i]), l1 = $(l1_[i]), g2 = $(g2_[i]), l2 = $(l2_[i])")
     end 
 
-    n_new = n .+ (change .* (dt*0.1) ) 
+    n_new = n .+ (change .* (dt*0.001 ) ) 
     new_mass =  sum(n_new .* mass[]) 
     mass_change = total_mass[] - new_mass
     # println("[1] Mass change = ", mass_change)  # check mass conservation
@@ -190,7 +196,7 @@ function A(G::Real, i::Int, j::Int)
     #   D: array of particle diameters (m)
     #   i, j: indices of the particle size classes for particles i and j
     # returns: collision probability between particles i and j (m^3/s) 
-    return  G * collision_matrix[][i,j]
+    return  G^α_2 * collision_matrix[][i,j]
 end
 
 function g1(n::Vector{<:Float64}, k::Int, G::Real)
