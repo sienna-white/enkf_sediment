@@ -11,7 +11,7 @@ const g = 9.81            # gravitational constant [m/s^2]
 const ν = 1.5e-6 # temp1.3e-6          # visosity of water [m^2/s] 
 const ρ_w = 1000          # density of water [kg/m^3]
 const ρ_s = 2650          # density of sediment kg/m^3
-const α = 1000 #4.5 #1.5  #0.55
+const α = 100000 #4.5 #1.5  #0.55
 const α_2 = 1.2
 
 
@@ -19,9 +19,9 @@ const α_2 = 1.2
 const nf = 2.2 #2.1 #1.9 #2.0                # fractal dimension exponent
 const Dp =  1e-6           # reference diameter (m)
 const Fy = 1e-10              # yield strength (N)
-const β_2 = 1.8 #1.8 #1.5            # winterwerp (2002)
+const β_2 = 2.0 #1.8 #1.5            # winterwerp (2002)
 const β_3 = 3 - nf         # winterwerp (2002)
-const β = 0.2 #0.06 #0.12 #0.1
+const β = 0.5 #0.06 #0.12 #0.1
 const total_mass = Ref{Float64}() # total mass of sediment (kg/m^3)
 const closest_half_mass = Ref{Vector{Int}}()
 const collision_matrix = Ref{Matrix{Float64}}()
@@ -95,7 +95,7 @@ function calculate_density(D::Vector{<:Real}, N::Int)
     # returns: density of a particle in size class i (kg/m^3)
     density_ = zeros(N)
     for i in 1:N
-        density_[i] = ρ_w + (ρ_s - ρ_w) * (Dp/D[i])^(nf - 3)
+        density_[i] = ρ_w + (ρ_s - ρ_w) * (D[i]/Dp)^(nf - 3)
     end 
     return density_
 end 
@@ -150,6 +150,9 @@ function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real, dt::Int)
     g2_ = zeros(N)
     l2_ = zeros(N)
 
+    total_mass = sum(mass[] .* n)
+    println("Total mass = ", total_mass[])  # check mass conservation
+
     for k in 1:N
         g1_[k] = g1(n, k, G)
         l1_[k] = l1(n, k, G, N)
@@ -163,23 +166,25 @@ function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real, dt::Int)
         change[i]  =  g1_[i]   - l1_[i]  + g2_[i]  - l2_[i]
         # println("\t i=$i n=$(n[i]) del=$(change[i]) // g1 = $(g1_[i]), l1 = $(l1_[i]), g2 = $(g2_[i]), l2 = $(l2_[i])")
     end 
+    n_new = n .+ (change .* 1e-3) 
 
-    n_new = n .+ (change .* (dt*0.001 ) ) 
     new_mass =  sum(n_new .* mass[]) 
-    mass_change = total_mass[] - new_mass
-    # println("[1] Mass change = ", mass_change)  # check mass conservation
+
+    mass_change = total_mass - new_mass
+    println("\t[1] Mass change = ", mass_change)  # check mass conservation
 
     for iv in 1:N
-        if n_new[iv] > 0.0              # was total_positive
-            n_new[iv] = n_new[iv]  + mass_change/mass[][iv] * ((n_new[iv]* mass[][iv])/new_mass) # (n[iv]* / mass[][iv])
-            # println("$(mass_change/mass[][iv] * ((n_new[iv]* mass[][iv])/new_mass))")
-        end 
+        # if n_new[iv] > 0.0              # was total_positive
+        n_new[iv] = n_new[iv]  + (mass_change/N) * 1/mass[][iv] #* ((n_new[iv]* mass[][iv])/new_mass) 
+        # end 
     end 
-    new_mass_change = total_mass[] - sum(n_new .* mass[])
-    # println("[2] Mass change = ", new_mass_change)  # check mass conservation
+    new_mass_change = total_mass - sum(n_new .* mass[])
+    println("\t [2] Mass change = ", new_mass_change)  # check mass conservation
 
+    gamma = n - n_new
     n_new = flocmod_mass_redistribute(n_new, N)
-    # new_mass_change = total_mass[] - sum(n_new .* mass[])
+
+    # new_mass_change = total_mass - sum(n_new .* mass[])
     # println("[3] Mass change = ", new_mass_change)  # check mass conservation
     
     return n_new

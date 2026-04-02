@@ -35,7 +35,7 @@ ssc0 = zeros(Ns)
 IC = 4
 if IC == 1
         ssc0 .= 5   # Matrix for sediment concentration (Nz x Ns)
-        ssc0[35:42] .= 250   # Matrix for sediment concentration (Nz x Ns)
+        ssc0[10:20] .= 350   # Matrix for sediment concentration (Nz x Ns)
 elseif IC == 2
         ssc0 .= 5   # Matrix for sediment concentration (Nz x Ns)
         ssc0[25:40] .= 250   # Matrix for sediment concentration (Nz x Ns)

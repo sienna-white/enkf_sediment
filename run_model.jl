@@ -66,30 +66,31 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
     #********************** DEFINE HYDRODYNAMIC FORCINGS ***************************
     # (1) PRESSURE 
-    Px0 = 2e-4          # Pressure gradient forcing
-    T_Px = 0 #12           # Period [hours] on pressure gradient forcing. Set to 0 for steady
+    Px0 = 2e-5          # Pressure gradient forcing
+    T_Px = 2 #12           # Period [hours] on pressure gradient forcing. Set to 0 for steady
 
     # (2) Wind
     # Wind = 1                       # u_star =m/s >> 0.05 is  drag coefficient, 10 is my wind speed 
     # WIND = (c_d * Wind)^2 * rhoA   # this is rho * u*^2
 
     # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
-    Ns = 100                  # Number of sediment size classes
-    ssc0 = zeros(N, Ns) .+ 1e6     # Matrix for sediment concentration (Nz x Ns)
-    
-    D = LinRange(1e-1, 200, Ns) .* 1e-6     # Sediment grain sizes (\mu m )
+    Ns = 30                  # Number of sediment size classes
+    ssc0 = zeros(N, Ns)     # Matrix for sediment concentration (Nz x Ns)
+    ssc0[:, 1:20] .= 600    # Matrix for sediment concentration (Nz x Ns)
+    D = logrange(1e-6, 330e-6, Ns)    # Sediment grain sizes (\mu m )
     D = collect(D)
     println("Sediment grain sizes (m) = ", D)
 
     # initialize once
-    init_params!(D, Ns)
+    # init_params!(D, Ns)
+    init_params!(D, Ns, ssc0[1,:])
 
     # Calculate settling velocities for each size class
     ws = floc_mod.ws[]  #.* 10
     println("Settling velocities (m/s) = ", ws)
     for i in 1:Ns
-        CFL = ws[i] * dt / dz
-        println("Size class $i: CFL = $CFL")
+        # CFL = ws[i] * dt / dz
+        println("Size class $i: ws = $(ws[i]*100) cm/s")
     end
 
     add_sediment_to_output(Ns, isave, M, N)
@@ -134,7 +135,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
     W0 = 0
     for i in 2:(M-1)
-
+        println("\n\n Timestep $i / $M, time = $(Times[i]) seconds")
         time = Times[i];
 
         # [1] Get pressure + wind forcing at this time
@@ -171,9 +172,11 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         ssc = variables["SSC"]
 
         gamma = similar(ssc) 
+        gamma .= 0
         if floc_on 
-            for ix in 1:N            # ssc @ z, num sed classes, shear
-                gamma[ix,:] .= run_floc_mod(ssc[ix,:], Ns, turbulent_shear[ix])
+            for ix in 1:Ns            # ssc @ z, num sed classes, shear
+                # println("At depth = $(z[ix]) m, turbulent shear = $(turbulent_shear[ix])")
+                ssc[ix,:] .= run_floc_mod(ssc[ix,:], Ns, turbulent_shear[ix], dt) 
                 # println("gamma at depth index $ix: ", gamma[ix,:])
             end
         else
@@ -186,8 +189,6 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         end
 
         
-         
-
         # [9] Pack variables for next timestep 
         variables["U"] = U
         variables["C"] = C
@@ -283,7 +284,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 end 
 
 # file_out_name = @sprintf("hydro.nc") 
-run_my_model("hydro_FlocOff.nc", false)
+run_my_model("hydro_FlocOn.nc", true)
+# run_my_model("hydro_FlocOff.nc", false)
 
 
 
