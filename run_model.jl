@@ -40,11 +40,11 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     @info "Floc on = $floc_on"
 
     #********************** SPATIAL DOMAIN  ***************************
-    N = 50 #60 #60    # number of grid points
+    N = 50    # number of grid points
     H = 10    # depth (meters)
     dz = H/N  # grid spacing - may need to adjust to reduce oscillations
-    dt = 10  # (seconds) size of time step 
-    M  = 3600  #360 #00 #000 # 50000  #500 #
+    dt = 10    # (seconds) size of time step 
+    M  = 360*3
 
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
     isave = 1 # 6 #1000
@@ -66,8 +66,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
     #********************** DEFINE HYDRODYNAMIC FORCINGS ***************************
     # (1) PRESSURE 
-    Px0 = 2e-5          # Pressure gradient forcing
-    T_Px = 2 #12           # Period [hours] on pressure gradient forcing. Set to 0 for steady
+    Px0 = 2e-4          # Pressure gradient forcing
+    T_Px = 1 #12           # Period [hours] on pressure gradient forcing. Set to 0 for steady
 
     # (2) Wind
     # Wind = 1                       # u_star =m/s >> 0.05 is  drag coefficient, 10 is my wind speed 
@@ -75,10 +75,12 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
     # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
     Ns = 30                  # Number of sediment size classes
-    ssc0 = zeros(N, Ns)     # Matrix for sediment concentration (Nz x Ns)
-    ssc0[:, 1:20] .= 600    # Matrix for sediment concentration (Nz x Ns)
-    D = logrange(1e-6, 330e-6, Ns)    # Sediment grain sizes (\mu m )
+    ssc0 = zeros(N, Ns)  .+ 5   # Matrix for sediment concentration (Nz x Ns)
+    ssc0[:, 10:20] .= 350    # Matrix for sediment concentration (Nz x Ns)
+            # D = LinRange(4, 1500, Ns) .* 1e-6     # Sediment grain sizes (\mu m )
+    D = logrange(1e-6, 330e-6, Ns) #.* 1e-6     # Sediment grain sizes (\mu m )
     D = collect(D)
+
     println("Sediment grain sizes (m) = ", D)
 
     # initialize once
@@ -133,13 +135,13 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     save2output(1, 1, "Nu", variables["Nu"])
     save_sediment2output(1, 1, ssc0)
 
-    W0 = 0
+    W0 = 2.5
     for i in 2:(M-1)
         println("\n\n Timestep $i / $M, time = $(Times[i]) seconds")
         time = Times[i];
 
         # [1] Get pressure + wind forcing at this time
-        pressure = Px0 #get_pressure_at_timestamp(time, Px0, T_Px)
+        pressure = get_pressure_at_timestamp(time, Px0, T_Px)
         ustar = calculate_ustar(variables["U"])
 
         # [2] Calculate density & stratification from temperature field
@@ -156,6 +158,9 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         Q2L = advance_Q2L(variables, ustar, discretization)
         
         turbulent_shear = (Q2 ./ Q2L) .* Q
+        turbulent_shear[1] = 0.1 
+        turbulent_shear[end] = 0.1 
+
         # println("Shear = ", turbulent_shear)
         # [5] Advance temperature 
         C = advance_scalar(variables, discretization) 
@@ -173,20 +178,21 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
         gamma = similar(ssc) 
         gamma .= 0
-        if floc_on 
-            for ix in 1:Ns            # ssc @ z, num sed classes, shear
+        if floc_on  
+            # At each depth 'N' evaluate and update the sediment distribution 
+            for ix in 1:N            # ssc @ z, num sed classes, shear
                 # println("At depth = $(z[ix]) m, turbulent shear = $(turbulent_shear[ix])")
-                ssc[ix,:] .= run_floc_mod(ssc[ix,:], Ns, turbulent_shear[ix], dt) 
-                # println("gamma at depth index $ix: ", gamma[ix,:])
+                ssc[ix,:] .= run_floc_mod(ssc[ix, :], Ns, turbulent_shear[ix]*100, dt) 
+                # N, Ns
             end
         else
             gamma .= 0
         end
         # println("gamma = ", gamma)
-        for i_sed_class in 1:Ns                          # ssc ~ (Nz x Ns)
-            s0 = advance_sediment3(variables, ssc[:,i_sed_class], -ws[i_sed_class], gamma[:,i_sed_class], discretization)
-            ssc[:, i_sed_class] = s0 
-        end
+        # for i_sed_class in 1:Ns                          # ssc ~ (Nz x Ns)
+        #     # s0 = advance_sediment3(variables, ssc[:,i_sed_class], -ws[i_sed_class], gamma[:,i_sed_class], discretization)
+        #     ssc[:, i_sed_class] = s0 
+        # end
 
         
         # [9] Pack variables for next timestep 
@@ -278,8 +284,6 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
     print("Saved $file_out_name \n")
     close(ds)
-    
-  
 
 end 
 

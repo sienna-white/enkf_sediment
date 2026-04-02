@@ -151,7 +151,7 @@ function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real, dt::Int)
     l2_ = zeros(N)
 
     total_mass = sum(mass[] .* n)
-    println("Total mass = ", total_mass[])  # check mass conservation
+    # println("Total mass = ", total_mass[])  # check mass conservation
 
     for k in 1:N
         g1_[k] = g1(n, k, G)
@@ -171,7 +171,7 @@ function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real, dt::Int)
     new_mass =  sum(n_new .* mass[]) 
 
     mass_change = total_mass - new_mass
-    println("\t[1] Mass change = ", mass_change)  # check mass conservation
+    # println("\t[1] Mass change = ", mass_change)  # check mass conservation
 
     for iv in 1:N
         # if n_new[iv] > 0.0              # was total_positive
@@ -179,7 +179,7 @@ function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real, dt::Int)
         # end 
     end 
     new_mass_change = total_mass - sum(n_new .* mass[])
-    println("\t [2] Mass change = ", new_mass_change)  # check mass conservation
+    # println("\t [2] Mass change = ", new_mass_change)  # check mass conservation
 
     gamma = n - n_new
     n_new = flocmod_mass_redistribute(n_new, N)
