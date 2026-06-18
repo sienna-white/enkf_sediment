@@ -1,5 +1,4 @@
 #!/usr/bin/env julia
-
 #  module load  julia/1.11.7 
 using Printf
 using DataStructures: OrderedDict
@@ -9,7 +8,7 @@ using Printf
 using Profile
 using Statistics 
 # using Arrow, DataFrames
-using LaTeXStrings
+# using LaTeXStrings
 using LinearAlgebra
 using Plots
 using StatsBase
@@ -17,42 +16,66 @@ using StatsBase
 
 include("floc_mod.jl")
 using .floc_mod
-# Pkg.add(["LaTeXStrings", "LinearAlgebra", "Profile"])
-# println("hello")
+
 
 # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
-Ns = 50                  # Number of sediment size classes
+Ns = 35                  # Number of sediment size classes
 
-D = LinRange(4, 1500, Ns) .* 1e-6     # Sediment grain sizes (\mu m )
-D = logrange(4e-6, 1500e-6, Ns) #.* 1e-6     # Sediment grain sizes (\mu m )
+D = logrange(10e-6, 1500e-6, Ns) # Sediment grain sizes (\mu m )
 D = collect(D)
-# println("Sediment grain sizes (m) = ", D)
 
 ssc0 = zeros(Ns)
-ssc0[1:20] .= 13.5e4    # Matrix for sediment concentration (Nz x Ns)
-
+ssc0[1:Ns-10] .= 1e8    # Matrix for sediment concentration (Nz x Ns)
+# ssc0[7:Ns] .= 150
 # initialize once
 init_params!(D, Ns, ssc0)
 
 # Calculate settling velocities for each size class
 ws = floc_mod.ws[] 
-# println("Settling velocities (m/s) = ", ws)
-
-turbulent_shear = 35 #2 #0.5
+turbulent_shear = 1.5 
 
 
-# NFRAMES=6000
-# output = zeros(Ns, NFRAMES)
-# output[:,1] = ssc0
-# dt = 1 
+NFRAMES=8600*6
+output = zeros(Ns, NFRAMES)
+output[:,1] = ssc0
+dt = 1
+println("CONCENTRATIONS = ", ssc0, "\n")
 
-# for i in 2:NFRAMES
-#         # print("Frame $i \n")
-#         N0 = output[:,i-1]
-#         N1 = run_floc_mod(N0, Ns, turbulent_shear, dt)
-#         output[:,i] = N1 
-# end 
 
+for i in 2:NFRAMES
+        # print("Frame $i \n")
+        N0 = output[:,i-1]
+        N1 = run_floc_mod(N0, Ns, turbulent_shear, dt)
+        output[:,i] = N1 
+        # if mod(i, 900) == 0
+        #         println("($i) CONCENTRATIONS = ", N1, "\n")
+        # end
+                
+end 
+
+D1 = get_particle_density() 
+skip = 60*1
+anim = @animate for i in 2:(div(NFRAMES, skip)) 
+        frame = i*skip
+        time = frame*dt/3600 
+        shear = turbulent_shear
+        time_string = @sprintf("%2.1f hr (Gval=%d)", time, shear)
+        scatter(D.*1e6, output[:,frame].*D1,  title=time_string, legend=false, xscale = :log10) #xlim=(0,1), ylim=(0,1),
+        xlabel!("Particle Diameter (um)")
+        ylabel!("N. particles")
+        # xscale!(:log)
+        avg_dist = mean(D.*1e6, weights(output[:,frame]))
+        # println("Average particle size at time $time_string is $avg_dist um")
+# plot(avg_dist)
+# save
+# savefig("average_size_distribution.png")
+end 
+
+gif(anim, "verney_test.gif", fps = 15)
+
+
+
+exit() 
 
 function get_Gval(i)
        if (i < 7201.0) 
@@ -131,7 +154,7 @@ end
 
 #         ! reproducing flocculation experiment Verney et al., 2011
 
-NFRAMES=57601
+NFRAMES=100
 output = zeros(Ns, NFRAMES)
 output[:,1] = ssc0
 dt = 1 
@@ -152,23 +175,3 @@ end
 
 
    
-
-skip = 60*5
-anim = @animate for i in 2:(div(NFRAMES, skip)) 
-        frame = i*skip
-        time = frame*dt/60 
-        shear = get_Gval(frame)
-        time_string = @sprintf("%2.1f min (Gval=%d)", time, shear)
-        scatter(D.*1e6, output[:,frame],  title=time_string, legend=false, xscale = :log10) #xlim=(0,1), ylim=(0,1),
-        xlabel!("Particle Diameter (um)")
-        ylabel!("N. particles")
-        # xscale!(:log)
-        avg_dist = mean(D.*1e6, weights(output[:,frame]))
-        println("Average particle size at time $time_string is $avg_dist um")
-# plot(avg_dist)
-# save
-# savefig("average_size_distribution.png")
-end 
-
-gif(anim, "verney_test.gif", fps = 15)
-
