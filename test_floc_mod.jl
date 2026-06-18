@@ -11,7 +11,7 @@ using Statistics
 # using LaTeXStrings
 using LinearAlgebra
 using Plots
-using StatsBase
+# using StatsBase
 
 
 include("floc_mod.jl")
@@ -19,52 +19,52 @@ using .floc_mod
 
 
 # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
-Ns = 35                  # Number of sediment size classes
+Ns = 45                  # Number of sediment size classes
 
 D = logrange(10e-6, 1500e-6, Ns) # Sediment grain sizes (\mu m )
 D = collect(D)
 
-ssc0 = zeros(Ns)
-ssc0[1:Ns-10] .= 1e8    # Matrix for sediment concentration (Nz x Ns)
+ssc0 = zeros(Ns) #.+ 1e8
+ssc0[1:30] .= 1e8    # Matrix for sediment concentration (Nz x Ns)
 # ssc0[7:Ns] .= 150
 # initialize once
 init_params!(D, Ns, ssc0)
 
 # Calculate settling velocities for each size class
 ws = floc_mod.ws[] 
-turbulent_shear = 1.5 
+turbulent_shear = 0.5 
 
 
-NFRAMES=8600*6
+NFRAMES=3600*7 #8600*6
 output = zeros(Ns, NFRAMES)
 output[:,1] = ssc0
-dt = 1
+dt = 5
 println("CONCENTRATIONS = ", ssc0, "\n")
 
-
+D1, M1 = get_particle_density() 
 for i in 2:NFRAMES
         # print("Frame $i \n")
         N0 = output[:,i-1]
         N1 = run_floc_mod(N0, Ns, turbulent_shear, dt)
         output[:,i] = N1 
-        # if mod(i, 900) == 0
-        #         println("($i) CONCENTRATIONS = ", N1, "\n")
-        # end
+        if mod(i, 1500) == 0
+                println("($i) CONCENTRATIONS = ", N1.*D1, "\n")
+        end
                 
 end 
 
-D1 = get_particle_density() 
+
 skip = 60*1
 anim = @animate for i in 2:(div(NFRAMES, skip)) 
         frame = i*skip
         time = frame*dt/3600 
         shear = turbulent_shear
         time_string = @sprintf("%2.1f hr (Gval=%d)", time, shear)
-        scatter(D.*1e6, output[:,frame].*D1,  title=time_string, legend=false, xscale = :log10) #xlim=(0,1), ylim=(0,1),
+        scatter(D.*1e6, output[:,frame].*M1,  title=time_string, legend=false, xscale = :log10) #xlim=(0,1), ylim=(0,1),
         xlabel!("Particle Diameter (um)")
-        ylabel!("N. particles")
+        ylabel!("Mass in particle class")
         # xscale!(:log)
-        avg_dist = mean(D.*1e6, weights(output[:,frame]))
+        # avg_dist = mean(D.*1e6, weights(output[:,frame]))
         # println("Average particle size at time $time_string is $avg_dist um")
 # plot(avg_dist)
 # save

@@ -8,8 +8,8 @@ using CSV, DataFrames
 using Printf
 using Profile
 using Statistics 
-using Arrow, DataFrames
-using LaTeXStrings
+# using Arrow, DataFrames
+# using LaTeXStrings
 using LinearAlgebra
 
 include("hydro/calculate_physical_variables.jl") 
@@ -74,13 +74,15 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     # WIND = (c_d * Wind)^2 * rhoA   # this is rho * u*^2
 
     # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
-    Ns = 30                  # Number of sediment size classes
+    Ns = 40                  # Number of sediment size classes
     ssc0 = zeros(N, Ns)  .+ 5   # Matrix for sediment concentration (Nz x Ns)
-    ssc0[:, 10:20] .= 350    # Matrix for sediment concentration (Nz x Ns)
+    ssc0[:, 1:20] .= 1e8    # Matrix for sediment concentration (Nz x Ns)
             # D = LinRange(4, 1500, Ns) .* 1e-6     # Sediment grain sizes (\mu m )
-    D = logrange(1e-6, 330e-6, Ns) #.* 1e-6     # Sediment grain sizes (\mu m )
+    D = logrange(10e-6, 1500e-6, Ns) #.* 1e-6     # Sediment grain sizes (\mu m )
     D = collect(D)
 
+
+    
     println("Sediment grain sizes (m) = ", D)
 
     # initialize once
@@ -135,7 +137,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     save2output(1, 1, "Nu", variables["Nu"])
     save_sediment2output(1, 1, ssc0)
 
-    W0 = 2.5
+    W0 = 3.5
     for i in 2:(M-1)
         println("\n\n Timestep $i / $M, time = $(Times[i]) seconds")
         time = Times[i];
@@ -182,7 +184,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
             # At each depth 'N' evaluate and update the sediment distribution 
             for ix in 1:N            # ssc @ z, num sed classes, shear
                 # println("At depth = $(z[ix]) m, turbulent shear = $(turbulent_shear[ix])")
-                ssc[ix,:] .= run_floc_mod(ssc[ix, :], Ns, turbulent_shear[ix]*100, dt) 
+                ssc[ix,:] .= run_floc_mod(ssc[ix, :], Ns, turbulent_shear[ix], dt) 
                 # N, Ns
             end
         else
@@ -265,9 +267,11 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         "units" =>  "parts/m3", "long_name" => "suspended sediment concentration"))
     v[:,:,:] = output["ssc"]
 
-    # v = defVar(ds, "mass", Float64, ("Ds"), attrib = OrderedDict(
-    #     "units" =>  "kg/particle", "long_name" => "mass of particle size class"))
-    # v[:] = floc_mod.mass[]
+
+    D1, M1 = get_particle_density() 
+    v = defVar(ds, "mass", Float64, ("Ds",), attrib = OrderedDict(
+        "units" =>  "kg/particle", "long_name" => "mass of particle size class"))
+    v[:] = M1
 
 
     v = defVar(ds, "z", Float32, ("z",))

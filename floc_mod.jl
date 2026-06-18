@@ -12,16 +12,17 @@ const ν = 1.5e-6 # temp1.3e-6          # visosity of water [m^2/s]
 const ρ_w = 1000          # density of water [kg/m^3]
 const ρ_s = 2650          # density of sediment kg/m^3
 const α = 0.35 #4.5 #1.5  #0.55
-# const α_2 = 1.2
 
 
 # ************************************************
-const nf = 1.9 #2.1 #1.9 #2.0                # fractal dimension exponent
+const nf = 2.3 #2.1 #1.9 #2.0                # fractal dimension exponent
 const Dp = 10e-6           # reference diameter (m)
-const Fy = 1e-10              # yield strength (N)
-const β_2 = 1.5 #            # winterwerp (2002)
+const Fy = 1e-10           # yield strength (N)
+const β_2 = 1.5 #          # winterwerp (2002)
 const β_3 = 3 - nf         # winterwerp (2002)
-const β = 0.012 #0.06 #0.12 #0.1
+const β = 0.08 #12 
+
+# constant vectors 
 const total_mass = Ref{Float64}() # total mass of sediment (kg/m^3)
 const closest_half_mass = Ref{Vector{Int}}()
 const collision_matrix = Ref{Matrix{Float64}}()
@@ -29,10 +30,9 @@ const D_ratio_4_B = Ref{Vector{Float64}}()
 const ws = Ref{Vector{Float64}}()
 const mass = Ref{Vector{Float64}}()
 const floc_density = Ref{Vector{Float64}}()
-const mass_frac = Ref{Vector{Float64}}()
+const particle_density = Ref{Vector{Float64}}() # Number of primary particles in each floc size class
 
-# Number of primary particles in each floc size class
-const particle_density = Ref{Vector{Float64}}()
+
 function init_params!(D::Vector{<:Real}, N::Int, n::Vector{<:Float64})
 
     @info "Initializing flocculation model with $N sediment classes ..."
@@ -57,36 +57,16 @@ function init_params!(D::Vector{<:Real}, N::Int, n::Vector{<:Float64})
     particle_density[] = particle_.* D.^nf
     
 
-    # @info "\t mass = $(mass[].*1000) g/particle"
-    # @info "\t particle density = $(particle_density) relative to primary particle"
-    # exit()
-
     # ---------------------------------------------
     # Pre-calculate large matricies 
     @info "\t initialized density, settling velocity, and floc mass..."
-    closest_half_mass0 = zeros(N)
-    collision_matrix0 = zeros(N,N)
-    D_ratio_4_B0 = zeros(N)
+    closest_half_mass[] = calculate_closest_half_mass(D, particle_density[], N)
+    collision_matrix[] = calculate_collision_matrix(D, N)
+    D_ratio_4_B[] = calculate_shear_breakup_matrix(D, N) 
 
-    for i in 1:N
-        closest = @. particle_density[][i] - (2*particle_density[])   # SW adding this since no mass is exactly half of another mass
-                                   # instead, we find the class w/ the closest mass to half the mass of floc k
-        closest_half_mass0[i] = argmin(broadcast(abs, closest))
-
-        D_ratio_4_B0[i] = D[i] * β * abs((D[i] - Dp)/Dp)^β_3 # SW adding abs to avoid imaginary numbers
-
-        for j in 1:N
-            collision_matrix0[i,j] = 1/6 * (D[i] + D[j])^3
-        end
-    end 
-
-    closest_half_mass[] = closest_half_mass0
-    collision_matrix[] = collision_matrix0
-    D_ratio_4_B[] = D_ratio_4_B0
-    mass_frac[] = calculate_dp_frac(N)
     @info "\t Initialized collision matrix, half-mass indices, and D ratio for break-up ..."
     total_mass[] = sum(mass[] .* n)
-    @info "\t Initial total mass of sediment is $(total_mass[]*1000) g/L"
+    @info "\t Initial total mass of flocculated sediment... $(total_mass[]*1000) g/L"
 
     return nothing
 
@@ -95,8 +75,43 @@ end
 
 
 function get_particle_density()
-    return particle_density[]
+    return particle_density[], mass[]
 end
+
+function calculate_shear_breakup_matrix(D::Vector{<:Real}, N::Int)
+    # Pre-calculate the shear break-up matrix for all size classes, 
+    # which is used in the break-up probability function B(i)
+
+    D_ratio_4_B_ = zeros(N)
+    for i in 1:N
+        D_ratio_4_B_[i] = D[i] * β * abs((D[i] - Dp)/Dp)^β_3
+    end 
+    return D_ratio_4_B_
+end
+
+function calculate_collision_matrix(D::Vector{<:Real}, N::Int)
+    # Pre-calculate the collision matrix for all size classes, 
+    # which is used in the collision probability function A(i,j)
+
+    collision_matrix_ = zeros(N,N)
+    for i in 1:N
+        for j in 1:N
+            collision_matrix_[i,j] = 1/6 * (D[i] + D[j])^3
+        end
+    end 
+    return collision_matrix_
+end
+
+function calculate_closest_half_mass(D::Vector{<:Real}, particle_density::Vector{<:Real}, N::Int)
+    # Used for binary fragmentation: what particle is closest to half the particle count of each floc?
+    closest_half_mass_ = zeros(N)
+    for i in 1:N
+        closest = @. particle_density[i] - (2*particle_density)  
+        closest_half_mass_[i] = argmin(abs.(closest))
+    end 
+    return closest_half_mass_
+end
+
 
 ######################### Floc properties #########################
 function calculate_w_s(D::Vector{<:Real}, N::Int)
@@ -136,7 +151,6 @@ function calculate_mass(D::Vector{<:Real}, N=N::Int)
     mass_ = zeros(N)
     for i in 1:N # floc_density[][i]
         mass_[i] = ρ_s * π/6 * D[i]^3 * (D[i]/Dp)^nf 
-        # println("i=$i D=$(D[i]) density=$(floc_density[][i]) mass=$(mass_[i])")
     end 
 
 
@@ -145,19 +159,6 @@ end
 
 
 
-function calculate_dp_frac(N::Int)
-    # calculate the density of a floc in size class i
-    # parameters:
-    #   ρ_w: particle density (kg/m^3)
-    #   D: array of particle diameters (m)
-    # returns: density of a particle in size class i (kg/m^3)
-    total_mass = sum(particle_density[])
-    mass_fraction_ = zeros(N)
-    for i in 1:N #mass[][i]
-        mass_fraction_[i] = 1 / total_mass
-    end 
-    return mass_fraction_
-end 
 
 # ******************** Flocculation functions ************************
 
@@ -186,6 +187,7 @@ function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real, dt::Int)
     # println("\t g1 = ", g1_)
     # println("agg -/+ =", sum((g1_ - l1_) .* particle_density[]))
     # println("\t l1 = ", l1_)
+    # println("\t net change: ", ((g1_ - l1_)))
     # println("\t g2 = ", g2_)
     # println("\t l2 = ", l2_)
     # println("breakup -/+ =", sum((g2_ - l2_) .* particle_density[]))
@@ -193,7 +195,7 @@ function run_floc_mod(n::Vector{<:Float64}, N::Int, G::Real, dt::Int)
     change = zeros(N)
     for i in 1:N
       #          agg (+)  agg(-)  shear(+)   shear(-)
-        change[i]  =  g1_[i]   - l1_[i]  #+ g2_[i]  - l2_[i]
+        change[i]  =  g1_[i]   - l1_[i]  + g2_[i]  - l2_[i]
         # println("\t i=$i n=$(n[i]) del=$(change[i]) // g1 = $(g1_[i]), l1 = $(l1_[i]), g2 = $(g2_[i]), l2 = $(l2_[i])")
     end 
     n_new = n .+ (change .* dt) 
@@ -248,7 +250,7 @@ function g1(n::Vector{<:Float64}, k::Int, G::Real)
     for j in 1:(k-1)
             g1_ += α * A(G,j,k-j) * n[k-j] * n[j] * (particle_density[][j] + particle_density[][k-j])/particle_density[][k] 
     end
-    g1_ = g1_ * 0.5
+    g1_ = g1_* 0.5
     return g1_
 end
 
@@ -257,7 +259,7 @@ function l1(n::Vector{<:Float64}, k::Int, G::Real, N::Int)
     # Loss due to collisions for class k
     l1_ = 0 
     for i in 1:N  # note this is N in original flocmod equations 
-        l1_ += α * A(G,i,k) * n[i] * n[k] #* (mass[][i]/mass[][k])
+        l1_ += α * A(G,i,k) * n[i] * n[k] 
     end 
     return l1_
 end 
@@ -399,34 +401,3 @@ end
 
 
 end
-
-
-
-
-# N = 200  # number of size classes
-# D = linspace(1e-5, 1e-4, N)  # particle diameters from 1 micron to 1 mm
-# n = zeros(N) .+ 100 # linspace(1e5, 1e4, N)  # number concentration in each size class (particles/m^3)
-
-
-# calculate once since diameters don't change
-# collision_matrix = zeros(N,N)
-# for i in 1:N
-#     for j in 1:N
-#         collision_matrix[i,j] = 1/6 * (D[i] + D[j])^3
-#     end
-# end 
-
-# closest_half_mass = zeros(N)
-# for i in 1:N
-#     closest = mass[i] - (2*mass)   # SW adding this since no mass is exactly half of another mass
-#                                    # instead, we find the class w/ the closest mass to half the mass of floc k
-#     closest_half_mass[i] = argmin(abs(closest))
-# end 
-
-# Calculate once since diameters don't change
-# D_ratio_4_B = zeros(N)
-# for i in 1:N                  
-#     D_ratio_4_B[i] = D[i] * β * abs((D[i] - Dp)/Dp)^β_3
-# end 
-
-
