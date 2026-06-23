@@ -44,10 +44,10 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     H = 10    # depth (meters)
     dz = H/N  # grid spacing - may need to adjust to reduce oscillations
     dt = 10    # (seconds) size of time step 
-    M  = 360*3
+    M  = 3600
 
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
-    isave = 1 # 6 #1000
+    isave = 6 # 6 #1000
     var2save = ["U","Kq", "Nu", "C", "Kz", "L", "Q2", "Q2L", "N_BV2"]
 
     create_output_dict(M, isave, var2save, N)
@@ -67,7 +67,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     #********************** DEFINE HYDRODYNAMIC FORCINGS ***************************
     # (1) PRESSURE 
     Px0 = 2e-4          # Pressure gradient forcing
-    T_Px = 1 #12           # Period [hours] on pressure gradient forcing. Set to 0 for steady
+    T_Px = 6           # Period [hours] on pressure gradient forcing. Set to 0 for steady
 
     # (2) Wind
     # Wind = 1                       # u_star =m/s >> 0.05 is  drag coefficient, 10 is my wind speed 
@@ -76,7 +76,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
     Ns = 40                  # Number of sediment size classes
     ssc0 = zeros(N, Ns)  .+ 5   # Matrix for sediment concentration (Nz x Ns)
-    ssc0[:, 1:20] .= 1e8    # Matrix for sediment concentration (Nz x Ns)
+    ssc0[:, 1:30] .= 1e7    # Matrix for sediment concentration (Nz x Ns)
             # D = LinRange(4, 1500, Ns) .* 1e-6     # Sediment grain sizes (\mu m )
     D = logrange(10e-6, 1500e-6, Ns) #.* 1e-6     # Sediment grain sizes (\mu m )
     D = collect(D)
@@ -91,7 +91,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
     # Calculate settling velocities for each size class
     ws = floc_mod.ws[]  #.* 10
-    println("Settling velocities (m/s) = ", ws)
+    # println("Settling velocities (m/s) = ", ws)
     for i in 1:Ns
         # CFL = ws[i] * dt / dz
         println("Size class $i: ws = $(ws[i]*100) cm/s")
@@ -136,10 +136,11 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     save2output(1, 1, "Kq", variables["Kq"])
     save2output(1, 1, "Nu", variables["Nu"])
     save_sediment2output(1, 1, ssc0)
+    real_times_saved = [Times[1]]
+    W0 = 2.5
 
-    W0 = 3.5
     for i in 2:(M-1)
-        println("\n\n Timestep $i / $M, time = $(Times[i]) seconds")
+        # println("\n\n Timestep $i / $M, time = $(Times[i]) seconds")
         time = Times[i];
 
         # [1] Get pressure + wind forcing at this time
@@ -159,10 +160,10 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         Q = @. sqrt(Q2)   
         Q2L = advance_Q2L(variables, ustar, discretization)
         
-        turbulent_shear = (Q2 ./ Q2L) .* Q
-        turbulent_shear[1] = 0.1 
+        turbulent_shear = (Q2 ./ Q2L) .* Q #.*100
+        # turbulent_shear[1] = 0.1 
+        println("Max shear is ", maximum(turbulent_shear))
         turbulent_shear[end] = 0.1 
-
         # println("Shear = ", turbulent_shear)
         # [5] Advance temperature 
         C = advance_scalar(variables, discretization) 
@@ -211,7 +212,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
         if i % isave == 0
            
-            index = div(i, isave) + 1  #(i-1) #div(i, isave)
+            index = div(i, isave) + 1 
             save2output(time, index, "U", variables["U"])
             save2output(time, index, "Kz", variables["Kz"])
             save2output(time, index, "C", variables["C"])
@@ -222,9 +223,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
             save2output(time, index, "Nu", variables["Nu"])
             save2output(time, index, "Kq", variables["Kq"])
             save_sediment2output(time, index, ssc)
-            # push!(real_times_saved, real_time[i])
+            push!(real_times_saved, time)
         end
-
     end
      
     # ********************** save data ****************************
@@ -243,7 +243,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
                 "N_BV2" => "Brunt-Vaisala frequency", "Kq" => "Kq", "Nu" => "Nu_t")
 
     # times_unique = unique(times) 
-    nt = div(M,isave) + 1
+    nt = div(M,isave) #+ 1
     
     ds = NCDataset(file_out_name,"c")
     ds.attrib["title"] = "testing"
@@ -262,7 +262,6 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
 
     # N, Ns, n_saved_steps
-    # ssc 
     v = defVar(ds, "ssc", Float64,("z", "Ds", "time"), attrib = OrderedDict(
         "units" =>  "parts/m3", "long_name" => "suspended sediment concentration"))
     v[:,:,:] = output["ssc"]
@@ -278,7 +277,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     v[:] = z
 
     v = defVar(ds, "time", Float32, ("time",), attrib = OrderedDict("units" => "seconds"))
-    v[:] = collect(1:nt) #model_time
+    v[:] = real_times_saved #real_times_saved #collect(1:nt) #model_time
 
     for var in var2save
         v = defVar(ds, var, Float64,("z","time"), attrib = OrderedDict(

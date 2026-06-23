@@ -11,16 +11,18 @@ const g = 9.81            # gravitational constant [m/s^2]
 const ν = 1.5e-6 # temp1.3e-6          # visosity of water [m^2/s] 
 const ρ_w = 1000          # density of water [kg/m^3]
 const ρ_s = 2650          # density of sediment kg/m^3
-const α = 0.35 #4.5 #1.5  #0.55
+const α = 0.4 #0.35 #4.5 #1.5  #0.55
 
 
 # ************************************************
-const nf = 2.3 #2.1 #1.9 #2.0                # fractal dimension exponent
+const nf = 2.4 #2.1 #1.9 #2.0                # fractal dimension exponent
 const Dp = 10e-6           # reference diameter (m)
 const Fy = 1e-10           # yield strength (N)
 const β_2 = 1.5 #          # winterwerp (2002)
 const β_3 = 3 - nf         # winterwerp (2002)
-const β = 0.08 #12 
+const β = 0.045 #12 #12 
+# const total_mass = Ref{Float64}() # total mass of sediment (kg/m^3)
+
 
 # constant vectors 
 const total_mass = Ref{Float64}() # total mass of sediment (kg/m^3)

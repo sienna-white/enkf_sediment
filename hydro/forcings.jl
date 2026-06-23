@@ -42,7 +42,7 @@ function wind_speed_2_wind_stress(Wind::Real, discretization, c_d=c_d, rhoA=rhoA
     # c_d = 0.05
     dt = discretization["dt"]
     dz = discretization["dz"]
-    W = (c_d * Wind)^2 * rhoA * dt/(dz*rho0) 
+    W = c_d * (Wind)^2 * rhoA * dt/(dz*rho0) 
     return W # Changed 2/21 to be W^2 instead of (0.5*W)^2
 end
 

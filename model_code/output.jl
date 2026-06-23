@@ -5,7 +5,7 @@ times = []
 # ***********************************************************************
 function create_output_dict(M::Int, isave::Int, Vars::Vector{<:String}, N::Int, output=output)
     nvars = length(Vars)
-    n_saved_steps = div(M,isave) + 1 #- 1
+    n_saved_steps = div(M,isave) #+ 1 #- 1
     # println("Creating output dict with $(nvars) variables and $(n_saved_steps) saved steps")
     for i = 1:nvars
         output[Vars[i]] = zeros(Float64, N, n_saved_steps)
