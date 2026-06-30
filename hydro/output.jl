@@ -21,10 +21,22 @@ function add_sediment_to_output(Ns, isave, M, N, output=output)
 end
 
 # ***********************************************************************
+function save_sediment2output_ens(Nens, index, ssc, output=output)
+    output["ssc"][Nens,  :, index] .= ssc
+end 
+
+
 
 function save_sediment2output(time, index, ssc, output=output)
     # print("Saving $varname at time $time")
     output["ssc"][:,  :, index] .= ssc
+    # push!(times, time)
+end 
+
+# ***********************************************************************
+function save2output_ens(Nens, index, varname, value, output=output)
+    # print("Saving $varname at time $time")
+    output[varname][Nens,index] = value
     # push!(times, time)
 end 
 

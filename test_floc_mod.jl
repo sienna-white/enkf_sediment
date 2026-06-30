@@ -25,17 +25,17 @@ D = logrange(10e-6, 1500e-6, Ns) # Sediment grain sizes (\mu m )
 D = collect(D)
 
 ssc0 = zeros(Ns) #.+ 1e8
-ssc0[1:30] .= 1e8    # Matrix for sediment concentration (Nz x Ns)
+ssc0[1:30] .= 1e3    # Matrix for sediment concentration (Nz x Ns)
 # ssc0[7:Ns] .= 150
 # initialize once
 init_params!(D, Ns, ssc0)
 
 # Calculate settling velocities for each size class
 ws = floc_mod.ws[] 
-turbulent_shear = 0.5 
+turbulent_shear = 6.5 
 
 
-NFRAMES=3600*7 #8600*6
+NFRAMES=60 #3600*7 #8600*6
 output = zeros(Ns, NFRAMES)
 output[:,1] = ssc0
 dt = 5
@@ -47,14 +47,14 @@ for i in 2:NFRAMES
         N0 = output[:,i-1]
         N1 = run_floc_mod(N0, Ns, turbulent_shear, dt)
         output[:,i] = N1 
-        if mod(i, 1500) == 0
+        if mod(i, 10) == 0
                 println("($i) CONCENTRATIONS = ", N1.*D1, "\n")
         end
                 
 end 
 
 
-skip = 60*1
+skip = 1 #60*1
 anim = @animate for i in 2:(div(NFRAMES, skip)) 
         frame = i*skip
         time = frame*dt/3600 
