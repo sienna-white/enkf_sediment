@@ -57,10 +57,12 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     #********************** SPATIAL DOMAIN  ***************************
     N = 40    # number of ensembles points
     dt = 1    # (seconds) size of time step 
-    M  = 3600*5 #3600
+    M  = 3600 #3600*5 #3600
+
+    interval = 60*5//dt 
 
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
-    isave = 30 # 6 #1000
+    isave = 1 
     var2save = ["G", "nf", "alpha", "beta"]
 
     create_output_dict(M, isave, var2save, N)
@@ -72,10 +74,10 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     specific_heat_air = 1007        # J/kg-degC x RH
 
     # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
-    Ns = 50                  # Number of sediment size classes
+    Ns = 10                  # Number of sediment size classes
 
-    ssc0 = zeros(N, Ns)  #.+ 1   # Matrix for sediment concentration (Nz x Ns)
-    ssc0[:, 1:30] .= 200    # Matrix for sediment concentration (N x Ns)
+    ssc0 = zeros(N, Ns)    # Matrix for sediment concentration (Nz x Ns)
+    ssc0[:, 1:7] .= 200    # Matrix for sediment concentration (N x Ns)
     ssc_init = ssc0[1, :]  # Initial sediment concentration for each size class
     D = logrange(10e-6, 1400e-6, Ns)      # Sediment grain sizes (\mu m )
     D = collect(D)
@@ -95,7 +97,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     #***************************************************************************
     Times = collect(0:dt:(M*dt))
 
-    save_sediment2output(1, 1, ssc0)
+    save_sediment2output(1, ssc0)
     real_times_saved = [Times[1]]
     #***************************************************************************
 
@@ -103,18 +105,15 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
 
     # Create fake observation # 
+    Ny = 2 
+    Y = zeros(Ny) 
+    Y[1] = 1e5      # floc1
+    Y[2] = 1e5      # floc2
 
-    H0 = zeros(1, Ns+3)  # zeros(Float64, N, N)
-    x_index = 5
-    H0[x_index] = 1 #e4      # floc1
-    H0[1 + x_index] = 1 #e4  # floc2
-    H0[2 + x_index] = 1 # e4  # floc3
-
-
-    Y = zeros(1, Ns+3)
-    Y[x_index] = 1e4      # floc1
-    Y[1 + x_index] = 1e4  # floc2
-    Y[2 + x_index] = 1e4  # floc3
+    x_index = 3
+    H = zeros(Ny, Ns)  # zeros(Float64, N, N)
+    H[1, x_index] = 1 
+    H[2, x_index+1] = 1 
 
 
     # Initialize parameter set for each ensemble member
@@ -145,78 +144,64 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
     #*************************** TIME LOOP  *********************************
     @info "Starting time loop for $M steps with dt = $dt seconds"
-    for i in 2:(M-1)
+    for i in 2:(M)
         time = Times[i];
 
         # ***************************************************************
         # [1] Advance sediment concentrations for each size class
         ssc = variables["SSC"]
 
-        # [2] Ensemble loop
+        # [2] Ensemble loop @ time step 
         for i_ens in 1:N 
-            # println("Running ensemble point $i_ens")
                        # sed distribution ~  Ns ~ Shear ~ dt 
             ssc[i_ens,:] .= run_floc_mod(floc_params_list[i_ens], ssc[i_ens, :], Ns, turbulent_shears[i_ens], dt) 
-        
+        end 
         # [3] Pack variables for next timestep 
         variables["G"] = turbulent_shears
         variables["SSC"] = ssc
 
         # ***************************************************************
         # [4] Perform EnKF update  
-        if i%15 ==0 
+        if i%interval ==0 
             println("Performing EnKF update at time = $time")
-            augmented_matrix = zeros(Ns + 3, N) 
+            augmented_matrix = zeros(Ns, N) 
             for EID in 1:N
                 augmented_matrix[1:Ns, EID] = ssc[EID, :]
-                augmented_matrix[Ns + 1, EID] = Alphas[EID]
-                augmented_matrix[Ns + 2, EID] = Betas[EID]
-                augmented_matrix[Ns + 3, EID] = Nfs[EID]
+                # augmented_matrix[Ns + 1, EID] = Alphas[EID]
+                # augmented_matrix[Ns + 2, EID] = Betas[EID]
+                # augmented_matrix[Ns + 3, EID] = Nfs[EID]
             end
 
             ensemble_covariance = cov(augmented_matrix, dims=2) 
             ensemble_mean = mean(augmented_matrix, dims=2)
-            R = 1e-3 
+            R = 4e3 #1e-3 
 
-            println("Size of ensemble_covariance: ", size(ensemble_covariance))
-            println("Size of H0: ", size(H0))
-            println("Size of augmented_matrix: ", size(augmented_matrix))
+            # println("Size of ensemble_covariance: ", size(ensemble_covariance))
+            # println("Size of H: ", size(H))
+            # println("Size of augmented_matrix: ", size(augmented_matrix))
 
-            kalman_gain = (ensemble_covariance * transpose(H0)) / (H0 * ensemble_covariance * transpose(H0) .+ R)
-            println("size of kalman gain", size(kalman_gain))
+            kalman_gain = (ensemble_covariance * transpose(H)) / (H * ensemble_covariance * transpose(H) .+ R)
  
             for EID in 1:N
                 current_state = augmented_matrix[:, EID]
-                println("size of current state", size(current_state))
-                println("size of Y", size(Y))
-                println("size of H0", size(H0))
-                innovation = (Y .- H0 * current_state)
-                shift = kalman_gain .* innovation'
-                println("size of shift", size(shift))
-                println("size of innovation", size(innovation))
-                println(innovation)
-
+                innovation = (Y .- H * current_state)
+                shift = kalman_gain * innovation
+                augmented_matrix[:, EID] = augmented_matrix[:, EID] + shift
+                ssc[EID, :] = augmented_matrix[1:Ns, EID]
+                ssc[EID, :] = clamp.(ssc[EID, :], 0.0, Inf)  # Ensure SSC values are non-negative
+                # println("Updated SSC for ensemble $EID: ", ssc[EID, :])
             end
-
-            # shift = kalman_gain * (Y .- H0 * augmented_matrix[:,1]) 
-
-
-
-            exit()
         end 
 
-            if i % isave == 0
-                index = div(i, isave) + 1 
-                save2output_ens(i_ens, index, "G", variables["G"][i_ens])
-                # save2output_ens(i_ens, index, "alpha", alpha)
-                # save2output_ens(i_ens, index, "nf", nf)
-                # save2output_ens(i_ens, index, "beta", beta)
-                # save2output_ens(i_ens, index, "sed_mass", floc_params.mass)
-                save_sediment2output_ens(i_ens, index, ssc[i_ens,:])
-                if i_ens == 1
-                    push!(real_times_saved, time)
-                end
-            end
+        if i % isave == 0
+            index = div(i, isave) 
+            # save2output_ens(i_ens, index, "G", variables["G"][i_ens])
+            # save2output_ens(i_ens, index, "alpha", alpha)
+            # save2output_ens(i_ens, index, "nf", nf)
+            # save2output_ens(i_ens, index, "beta", beta)
+            # save2output_ens(i_ens, index, "sed_mass", floc_params.mass)
+            save_sediment2output(index, ssc)
+            push!(real_times_saved, time)
         end
     end 
     # ********************** save data ****************************

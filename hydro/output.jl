@@ -15,7 +15,7 @@ end
 
 function add_sediment_to_output(Ns, isave, M, N, output=output)
     @info "Creating output structure to save sediment concentrations..."
-    n_saved_steps = div((M), isave) #+ 1 #- 1
+    n_saved_steps = div((M), isave)#- 1
 
     output["ssc"] = zeros(Float64, N, Ns, n_saved_steps)
 end
@@ -27,7 +27,7 @@ end
 
 
 
-function save_sediment2output(time, index, ssc, output=output)
+function save_sediment2output(index, ssc, output=output)
     # print("Saving $varname at time $time")
     output["ssc"][:,  :, index] .= ssc
     # push!(times, time)
