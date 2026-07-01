@@ -99,7 +99,6 @@ function init_params(D::Vector{<:Real}, N::Int, n::Vector{<:Float64}, alpha::Flo
     floc_density = calculate_density(nf, D, N)
     ws = calculate_w_s(floc_density, D, N)
     mass = calculate_mass(nf, D, N)
-    println(mass)
 
     # ---------------------------------------------
     # Calculate number of primary particles in each floc size class
@@ -114,6 +113,8 @@ function init_params(D::Vector{<:Real}, N::Int, n::Vector{<:Float64}, alpha::Flo
     collision_matrix = calculate_collision_matrix(D, N)
     D_ratio_4_B = calculate_shear_breakup_matrix(beta, nf, D, N) 
 
+    # println("Mass = ", mass)
+    # println("n = ", n)
     total_mass = sum(mass .* n)
     @info "\t Initial total mass of flocculated sediment... $(total_mass*1000) g/L"
 
@@ -229,7 +230,7 @@ function run_floc_mod(fp::FlocParams, n::Vector{<:Float64}, N::Int, G::Real, dt:
 
     total_mass = sum(fp.particle_density .* n)
     # println("Total mass = ", total_mass[])  # check mass conservation
-
+    # print("[0] n = ", n, "\n")
     for k in 1:N
         g1_[k] = g1(fp, n, k, G)
         l1_[k] = l1(fp, n, k, G, N)
@@ -320,7 +321,6 @@ function l1(fp::FlocParams, n::Vector{<:Float64}, k::Int, G::Real, N::Int)
 
     α = fp.α
     particle_density = fp.particle_density
-
     for i in 1:N  # note this is N in original flocmod equations 
         l1_ += α * A(fp, G,i,k) * n[i] * n[k]  * 1/particle_density[k]
     end 

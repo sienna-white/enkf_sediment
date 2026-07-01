@@ -55,7 +55,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
 
     #********************** SPATIAL DOMAIN  ***************************
-    N = 250    # number of ensembles points
+    N = 40    # number of ensembles points
     dt = 1    # (seconds) size of time step 
     M  = 3600*5 #3600
 
@@ -72,10 +72,11 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     specific_heat_air = 1007        # J/kg-degC x RH
 
     # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
-    Ns = 40                  # Number of sediment size classes
+    Ns = 50                  # Number of sediment size classes
 
     ssc0 = zeros(N, Ns)  #.+ 1   # Matrix for sediment concentration (Nz x Ns)
-    ssc0[:, 1:35] .= 6e3    # Matrix for sediment concentration (N x Ns)
+    ssc0[:, 1:30] .= 200    # Matrix for sediment concentration (N x Ns)
+    ssc_init = ssc0[1, :]  # Initial sediment concentration for each size class
     D = logrange(10e-6, 1400e-6, Ns)      # Sediment grain sizes (\mu m )
     D = collect(D)
 
@@ -98,55 +99,119 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     real_times_saved = [Times[1]]
     #***************************************************************************
 
-    turbulent_shears = zeros(N) .+ 30  #collect(1:N).^2 
+    turbulent_shears = zeros(N) .+ 30  
 
-    for i_ens in 1:N 
-        variables = Dict() 
-        variables["SSC"] = ssc0
 
-        println("Running ensemble point $i_ens")
+    # Create fake observation # 
 
+    H0 = zeros(1, Ns+3)  # zeros(Float64, N, N)
+    x_index = 5
+    H0[x_index] = 1 #e4      # floc1
+    H0[1 + x_index] = 1 #e4  # floc2
+    H0[2 + x_index] = 1 # e4  # floc3
+
+
+    Y = zeros(1, Ns+3)
+    Y[x_index] = 1e4      # floc1
+    Y[1 + x_index] = 1e4  # floc2
+    Y[2 + x_index] = 1e4  # floc3
+
+
+    # Initialize parameter set for each ensemble member
+    floc_params_list = [] 
+    for i_ens in 1:N
         alpha = Alphas[i_ens]
         beta = Betas[i_ens]
         nf = Nfs[i_ens]
-        floc_params = init_params(D, Ns, ssc0[1,:], alpha, beta, nf)
-    
+        floc_params = init_params(D, Ns, ssc_init, alpha, beta, nf)
+        push!(floc_params_list, floc_params)
         @printf("\tParameters for ensemble [%d]: alpha=%2.2f, beta=%2.2f, nf=%2.2f\n", i_ens, alpha, beta, nf)
+
+    end
+
+    variables = Dict() 
+    variables["SSC"] = ssc0
+    
+    
         
         # Calculate settling velocities for each size class
-        ws = floc_params.ws
+        # ws = floc_params.ws
         # for i in 1:Ns
         #     # println("\t Size class $i: ws = $(ws[i]*100) cm/s")
         #     @printf("\t Size class %d, ws =  %2.2f cm/s\n", i, (ws[i_ens]*100))
         # end
-
-        if i_ens==3
-            exit()
-        end         
+     
         
-        #*************************** TIME LOOP  *********************************
-        for i in 2:(M-1)
 
-            time = Times[i];
+    #*************************** TIME LOOP  *********************************
+    @info "Starting time loop for $M steps with dt = $dt seconds"
+    for i in 2:(M-1)
+        time = Times[i];
 
-            # ***************************************************************
-            # [1] Advance sediment concentrations for each size class
-            ssc = variables["SSC"]
+        # ***************************************************************
+        # [1] Advance sediment concentrations for each size class
+        ssc = variables["SSC"]
 
+        # [2] Ensemble loop
+        for i_ens in 1:N 
+            # println("Running ensemble point $i_ens")
                        # sed distribution ~  Ns ~ Shear ~ dt 
-            ssc[i_ens,:] .= run_floc_mod(floc_params, ssc[i_ens, :], Ns, turbulent_shears[i_ens], dt) 
+            ssc[i_ens,:] .= run_floc_mod(floc_params_list[i_ens], ssc[i_ens, :], Ns, turbulent_shears[i_ens], dt) 
         
-            # [2] Pack variables for next timestep 
-            variables["G"] = turbulent_shears
-            variables["SSC"] = ssc
+        # [3] Pack variables for next timestep 
+        variables["G"] = turbulent_shears
+        variables["SSC"] = ssc
 
-            
+        # ***************************************************************
+        # [4] Perform EnKF update  
+        if i%15 ==0 
+            println("Performing EnKF update at time = $time")
+            augmented_matrix = zeros(Ns + 3, N) 
+            for EID in 1:N
+                augmented_matrix[1:Ns, EID] = ssc[EID, :]
+                augmented_matrix[Ns + 1, EID] = Alphas[EID]
+                augmented_matrix[Ns + 2, EID] = Betas[EID]
+                augmented_matrix[Ns + 3, EID] = Nfs[EID]
+            end
+
+            ensemble_covariance = cov(augmented_matrix, dims=2) 
+            ensemble_mean = mean(augmented_matrix, dims=2)
+            R = 1e-3 
+
+            println("Size of ensemble_covariance: ", size(ensemble_covariance))
+            println("Size of H0: ", size(H0))
+            println("Size of augmented_matrix: ", size(augmented_matrix))
+
+            kalman_gain = (ensemble_covariance * transpose(H0)) / (H0 * ensemble_covariance * transpose(H0) .+ R)
+            println("size of kalman gain", size(kalman_gain))
+ 
+            for EID in 1:N
+                current_state = augmented_matrix[:, EID]
+                println("size of current state", size(current_state))
+                println("size of Y", size(Y))
+                println("size of H0", size(H0))
+                innovation = (Y .- H0 * current_state)
+                shift = kalman_gain .* innovation'
+                println("size of shift", size(shift))
+                println("size of innovation", size(innovation))
+                println(innovation)
+
+            end
+
+            # shift = kalman_gain * (Y .- H0 * augmented_matrix[:,1]) 
+
+
+
+            exit()
+        end 
+
             if i % isave == 0
                 index = div(i, isave) + 1 
                 save2output_ens(i_ens, index, "G", variables["G"][i_ens])
-                save2output_ens(i_ens, index, "alpha", alpha)
-                save2output_ens(i_ens, index, "nf", nf)
-                save2output_ens(i_ens, index, "beta", beta)
+                # save2output_ens(i_ens, index, "alpha", alpha)
+                # save2output_ens(i_ens, index, "nf", nf)
+                # save2output_ens(i_ens, index, "beta", beta)
+                # save2output_ens(i_ens, index, "sed_mass", floc_params.mass)
                 save_sediment2output_ens(i_ens, index, ssc[i_ens,:])
                 if i_ens == 1
                     push!(real_times_saved, time)
@@ -155,8 +220,9 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         end
     end 
     # ********************** save data ****************************
-    units_dict = Dict("G" => "1/s", "alpha" => "m^3/s", "beta" => "1/s", "nf" => "-")
-    var2name = Dict("G" => "Turbulent shear", "alpha" => "Aggregation coefficient", "beta" => "Fragmentation coefficient", "nf" => "Fractal dimension exponent")
+    units_dict = Dict("G" => "1/s", "alpha" => "m^3/s", "beta" => "1/s", "nf" => "-", "sed_mass" => "kg/m^3")
+    var2name = Dict("G" => "Turbulent shear", "alpha" => "Aggregation coefficient", 
+                    "beta" => "Fragmentation coefficient", "nf" => "Fractal dimension exponent", "sed_mass" => "Sediment mass concentration")
 
     nt = div(M,isave)
     
@@ -180,14 +246,14 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         "units" =>  "parts/m3", "long_name" => "suspended sediment concentration"))
     v[:,:,:] = output["ssc"]
 
-    D1, M1 = get_particle_density() 
-    v = defVar(ds, "np", Float64, ("Ds",), attrib = OrderedDict(
-        "units" =>  "particle/floc", "long_name" => "number primary particle per floc"))
-    v[:] = D1
+    # D1, M1 = get_particle_density() 
+    # v = defVar(ds, "np", Float64, ("Ds",), attrib = OrderedDict(
+    #     "units" =>  "particle/floc", "long_name" => "number primary particle per floc"))
+    # v[:] = D1
 
-    v = defVar(ds, "mass", Float64, ("Ds",), attrib = OrderedDict(
-        "units" =>  "kg/particle", "long_name" => "mass of each floc (fractal!)"))
-    v[:] = M1
+    # v = defVar(ds, "mass", Float64, ("Ds",), attrib = OrderedDict(
+    #     "units" =>  "kg/particle", "long_name" => "mass of each floc (fractal!)"))
+    # v[:] = M1
 
     v = defVar(ds, "N", Float32, ("N",))
     v[:] = collect(1:N)
@@ -199,7 +265,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     for var in var2save
         v = defVar(ds, var, Float64,("N","time"), attrib = OrderedDict(
         "units" =>  units_dict[var], "long_name" => var2name[var]))
-        v[:,:] = output[var];
+        v[:,:] = output[var]; 
     end
 # end 
     print("Saved $file_out_name \n")
