@@ -41,10 +41,10 @@ function save2output_ens(Nens, index, varname, value, output=output)
 end 
 
 # ***********************************************************************
-function save2output(time, index, varname, value, output=output)
+function save2output(index, varname, value, output=output)
     # print("Saving $varname at time $time")
     output[varname][:,index] .= value
-    push!(times, time)
+    # push!(times, time)
 end 
 # ***********************************************************************
 

@@ -55,9 +55,9 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
 
     #********************** SPATIAL DOMAIN  ***************************
-    N = 40    # number of ensembles points
+    N = 250    # number of ensembles points
     dt = 1    # (seconds) size of time step 
-    M  = 3600 #3600*5 #3600
+    M  = 3600*3 #3600*5 #3600
 
     interval = 60*5//dt 
 
@@ -77,18 +77,18 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     Ns = 10                  # Number of sediment size classes
 
     ssc0 = zeros(N, Ns)    # Matrix for sediment concentration (Nz x Ns)
-    ssc0[:, 1:7] .= 200    # Matrix for sediment concentration (N x Ns)
+    ssc0[:, 1:7] .= 900    # Matrix for sediment concentration (N x Ns)
     ssc_init = ssc0[1, :]  # Initial sediment concentration for each size class
     D = logrange(10e-6, 1400e-6, Ns)      # Sediment grain sizes (\mu m )
     D = collect(D)
 
-    Alphas = create_lognormal_distribution(0.35, 0.15^2, N)
+    Alphas = create_lognormal_distribution(0.35, 0.2^2, N)
     Betas = create_lognormal_distribution(0.055, 0.03^2, N)
     Nfs = create_lognormal_distribution(1.9, 0.3^2, N)
 
     Betas = clamp.(Betas, 0.01, 0.2) # Ensure Betas values are within the range [0.01, 0.1]
     Alphas = clamp.(Alphas, 0.01, 1.0) # Ensure Alphas values are within the range [0.1, 0.5]
-    Nfs = clamp.(Nfs, 1.1, 2.9) # Ensure Nfs values are within the range [1.5, 2.5]
+    Nfs = clamp.(Nfs, 1.1, 2.99) # Ensure Nfs values are within the range [1.5, 2.5]
 
     add_sediment_to_output(Ns, isave, M, N)
 
@@ -103,15 +103,16 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
     turbulent_shears = zeros(N) .+ 30  
 
-
-    # Create fake observation # 
-    Ny = 2 
+    #***************************************************************************
+    #   Observations
+    #***************************************************************************
+    Ny = 7 
     Y = zeros(Ny) 
-    Y[1] = 1e5      # floc1
-    Y[2] = 1e5      # floc2
+    Y[1] = 50      # floc1
+    Y[2] = 50      # floc2
 
     x_index = 3
-    H = zeros(Ny, Ns)  # zeros(Float64, N, N)
+    H = zeros(Ny, Ns+3)  # + 3 for augmented matrix 
     H[1, x_index] = 1 
     H[2, x_index+1] = 1 
 
@@ -164,41 +165,56 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         # [4] Perform EnKF update  
         if i%interval ==0 
             println("Performing EnKF update at time = $time")
-            augmented_matrix = zeros(Ns, N) 
+            augmented_matrix = zeros(Ns+3, N) 
             for EID in 1:N
                 augmented_matrix[1:Ns, EID] = ssc[EID, :]
-                # augmented_matrix[Ns + 1, EID] = Alphas[EID]
-                # augmented_matrix[Ns + 2, EID] = Betas[EID]
-                # augmented_matrix[Ns + 3, EID] = Nfs[EID]
+                augmented_matrix[Ns + 1, EID] = Alphas[EID] + abs(randn()*0.01)
+                augmented_matrix[Ns + 2, EID] = Betas[EID] + abs(randn()*0.01)
+                augmented_matrix[Ns + 3, EID] = Nfs[EID] + abs(randn()*0.01)
             end
 
             ensemble_covariance = cov(augmented_matrix, dims=2) 
             ensemble_mean = mean(augmented_matrix, dims=2)
-            R = 4e3 #1e-3 
+            R = 4e3 #1e-3  # Observation error covariance matrix
+            # R = 4e3 #1e-3 
 
-            # println("Size of ensemble_covariance: ", size(ensemble_covariance))
-            # println("Size of H: ", size(H))
-            # println("Size of augmented_matrix: ", size(augmented_matrix))
 
-            kalman_gain = (ensemble_covariance * transpose(H)) / (H * ensemble_covariance * transpose(H) .+ R)
+            kalman_gain = (ensemble_covariance * transpose(H)) / (H * ensemble_covariance * transpose(H) + R * I)
  
             for EID in 1:N
+                # Analysis step 
                 current_state = augmented_matrix[:, EID]
                 innovation = (Y .- H * current_state)
                 shift = kalman_gain * innovation
                 augmented_matrix[:, EID] = augmented_matrix[:, EID] + shift
+
+                # Clamp @ zero for no negative concentrations and parameters 
+                augmented_matrix[:, EID] = clamp.(augmented_matrix[:, EID], 1e-5, Inf)
+                
+                # Update sediment concentration for the ensemble 
                 ssc[EID, :] = augmented_matrix[1:Ns, EID]
-                ssc[EID, :] = clamp.(ssc[EID, :], 0.0, Inf)  # Ensure SSC values are non-negative
-                # println("Updated SSC for ensemble $EID: ", ssc[EID, :])
+
+                # Update parameters for the ensemble
+                Alphas[EID] = clamp(augmented_matrix[Ns + 1, EID], 0.01, 1.0) 
+                Betas[EID]  = clamp(augmented_matrix[Ns + 2, EID], 0.001, 0.2)
+                Nfs[EID]    = clamp(augmented_matrix[Ns + 3, EID], 1.1, 2.9)
+
+                # println("New alpha = ", Alphas[EID], ", New beta = ", Betas[EID], ", New nf = ", Nfs[EID])
+                # println("ssc[EID, :] = ", ssc[EID, :])
+
+                # Re-calculate sediment parameters
+                floc_params_list[EID] = init_params(D, Ns, ssc[EID, :], Alphas[EID], Betas[EID], Nfs[EID])
+                
             end
         end 
 
         if i % isave == 0
-            index = div(i, isave) 
+            index = div(i, isave)
+            save2output(index, "alpha", Alphas) 
+            save2output(index, "beta", Betas)
+            save2output(index, "nf", Nfs)
+            save2output(index, "G", turbulent_shears)
             # save2output_ens(i_ens, index, "G", variables["G"][i_ens])
-            # save2output_ens(i_ens, index, "alpha", alpha)
-            # save2output_ens(i_ens, index, "nf", nf)
-            # save2output_ens(i_ens, index, "beta", beta)
             # save2output_ens(i_ens, index, "sed_mass", floc_params.mass)
             save_sediment2output(index, ssc)
             push!(real_times_saved, time)
