@@ -53,16 +53,20 @@ end
 
 function run_my_model(file_out_name::String, floc_on::Bool=true)
 
+    df = CSV.read("/global/homes/s/siennaw/scratch/siennaw/scripts/enkf_sediment/adv_shear_4_model.csv", DataFrame)
+    time_steps = df[!, "seconds"]
+    turbulent_shears = df[!, "shear"] .* 100 #0.1
+
 
     #********************** SPATIAL DOMAIN  ***************************
     N = 250    # number of ensembles points
     dt = 1    # (seconds) size of time step 
-    M  = 3600*3 #3600*5 #3600
+    M  = 3600*24*5 #3600*5 #3600
 
-    interval = 60*5//dt 
+    interval = M*2 #60*5//dt 
 
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
-    isave = 1 
+    isave = 60*5
     var2save = ["G", "nf", "alpha", "beta"]
 
     create_output_dict(M, isave, var2save, N)
@@ -74,20 +78,20 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     specific_heat_air = 1007        # J/kg-degC x RH
 
     # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
-    Ns = 10                  # Number of sediment size classes
+    Ns = 40                  # Number of sediment size classes
 
     ssc0 = zeros(N, Ns)    # Matrix for sediment concentration (Nz x Ns)
-    ssc0[:, 1:7] .= 900    # Matrix for sediment concentration (N x Ns)
+    ssc0[:, 1:30] .= 750    # Matrix for sediment concentration (N x Ns)
     ssc_init = ssc0[1, :]  # Initial sediment concentration for each size class
     D = logrange(10e-6, 1400e-6, Ns)      # Sediment grain sizes (\mu m )
     D = collect(D)
 
-    Alphas = create_lognormal_distribution(0.35, 0.2^2, N)
-    Betas = create_lognormal_distribution(0.055, 0.03^2, N)
-    Nfs = create_lognormal_distribution(1.9, 0.3^2, N)
+    Alphas = create_lognormal_distribution(0.35, 0.3^2, N)
+    Betas = create_lognormal_distribution(0.045, 0.05^2, N) #(0.055, 0.05^2, N)
+    Nfs = create_lognormal_distribution(1.9, 0.35^2, N)
 
-    Betas = clamp.(Betas, 0.01, 0.2) # Ensure Betas values are within the range [0.01, 0.1]
-    Alphas = clamp.(Alphas, 0.01, 1.0) # Ensure Alphas values are within the range [0.1, 0.5]
+    Betas = clamp.(Betas, 0.001, 0.5) # Ensure Betas values are within the range [0.01, 0.1]
+    Alphas = clamp.(Alphas, 0.001, 1.0) # Ensure Alphas values are within the range [0.1, 1.0]
     Nfs = clamp.(Nfs, 1.1, 2.99) # Ensure Nfs values are within the range [1.5, 2.5]
 
     add_sediment_to_output(Ns, isave, M, N)
@@ -101,7 +105,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     real_times_saved = [Times[1]]
     #***************************************************************************
 
-    turbulent_shears = zeros(N) .+ 30  
+    # turbulent_shears = zeros(N) .+ 30  
 
     #***************************************************************************
     #   Observations
@@ -153,9 +157,9 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         ssc = variables["SSC"]
 
         # [2] Ensemble loop @ time step 
-        for i_ens in 1:N 
+        @threads for i_ens in 1:N 
                        # sed distribution ~  Ns ~ Shear ~ dt 
-            ssc[i_ens,:] .= run_floc_mod(floc_params_list[i_ens], ssc[i_ens, :], Ns, turbulent_shears[i_ens], dt) 
+            ssc[i_ens,:] .= run_floc_mod(floc_params_list[i_ens], ssc[i_ens, :], Ns, turbulent_shears[i], dt) 
         end 
         # [3] Pack variables for next timestep 
         variables["G"] = turbulent_shears
@@ -213,7 +217,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
             save2output(index, "alpha", Alphas) 
             save2output(index, "beta", Betas)
             save2output(index, "nf", Nfs)
-            save2output(index, "G", turbulent_shears)
+            save2output(index, "G", turbulent_shears[i])
             # save2output_ens(i_ens, index, "G", variables["G"][i_ens])
             # save2output_ens(i_ens, index, "sed_mass", floc_params.mass)
             save_sediment2output(index, ssc)
@@ -259,8 +263,9 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     v = defVar(ds, "N", Float32, ("N",))
     v[:] = collect(1:N)
 
+
     v = defVar(ds, "time", Float32, ("time",), attrib = OrderedDict("units" => "seconds"))
-    v[:] = real_times_saved #real_times_saved #collect(1:nt) #model_time
+    v[:] = real_times_saved[1:end-1] #real_times_saved #collect(1:nt) #model_time
 
     # println()
     for var in var2save
@@ -274,4 +279,4 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
 end 
 
-run_my_model("FlocMod_TEST.nc", true)
+run_my_model("FlocMod_ADV_G_5.nc", true)

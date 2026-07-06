@@ -1,9 +1,9 @@
 
 # Physical parameters 
-z0 = 0.01         # Bottom roughness [m]
+z0 = 0.05         # Bottom roughness [m]
 zb = 10*z0        # Bottom height [m]
 g  = 9.81         # Gravity [m/s^2]
-C_D = 0.0025      # Friction coefficient 
+C_D = 0.2 #05 #0.0025      # Friction coefficient 
 SMALL = 1e-6      # Noise floor for turbulence quantities [m/s?]
 kappa = 0.4       # Von Karman constant
 nu = 1e-6         # Kinematic viscosity [m^2/s]
