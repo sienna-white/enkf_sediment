@@ -55,19 +55,24 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
     df = CSV.read("/global/homes/s/siennaw/scratch/siennaw/scripts/enkf_sediment/adv_shear_4_model.csv", DataFrame)
     time_steps = df[!, "seconds"]
-    turbulent_shears = df[!, "shear"] .* 100 #0.1
+    turbulent_shears = df[!, "smoothed_shear"] #./10
 
+    function get_shear(tstep::Int)
+        # divide by 10 
+        index = div(tstep, 2) + 1
+        return turbulent_shears[index]
+    end 
 
     #********************** SPATIAL DOMAIN  ***************************
-    N = 250    # number of ensembles points
-    dt = 1    # (seconds) size of time step 
-    M  = 3600*24*5 #3600*5 #3600
+    N = 50 #250    # number of ensembles points
+    dt = 0.5    # (seconds) size of time step 
+    M  = 3600*2*25*5  #24*5 #3600*5 #3600
 
-    interval = M*2 #60*5//dt 
+    interval = 2000 # M*2 #60*5//dt 
 
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
-    isave = 60*5
-    var2save = ["G", "nf", "alpha", "beta"]
+    isave = 60*5*10
+    var2save = ["G", "nf", "alpha", "beta", "beta2"]
 
     create_output_dict(M, isave, var2save, N)
 
@@ -80,19 +85,20 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
     Ns = 40                  # Number of sediment size classes
 
-    ssc0 = zeros(N, Ns)    # Matrix for sediment concentration (Nz x Ns)
-    ssc0[:, 1:30] .= 750    # Matrix for sediment concentration (N x Ns)
-    ssc_init = ssc0[1, :]  # Initial sediment concentration for each size class
-    D = logrange(10e-6, 1400e-6, Ns)      # Sediment grain sizes (\mu m )
+    ssc0 = zeros(N, Ns)     # Matrix for sediment concentration (Nz x Ns)
+    ssc0[:, 1:30] .= 300    # Matrix for sediment concentration (N x Ns)
+    ssc_init = ssc0[1, :]   # Initial sediment concentration for each size class
+    D = logrange(10e-6, 1500e-6, Ns)      # Sediment grain sizes (\mu m )
     D = collect(D)
 
     Alphas = create_lognormal_distribution(0.35, 0.3^2, N)
     Betas = create_lognormal_distribution(0.045, 0.05^2, N) #(0.055, 0.05^2, N)
-    Nfs = create_lognormal_distribution(1.9, 0.35^2, N)
+    Beta2s = create_lognormal_distribution(1.0, 0.5^2, N) #(0.055, 0.05^2, N)
+    Nfs = create_lognormal_distribution(1.9, 0.3^2, N)
 
     Betas = clamp.(Betas, 0.001, 0.5) # Ensure Betas values are within the range [0.01, 0.1]
-    Alphas = clamp.(Alphas, 0.001, 1.0) # Ensure Alphas values are within the range [0.1, 1.0]
-    Nfs = clamp.(Nfs, 1.1, 2.99) # Ensure Nfs values are within the range [1.5, 2.5]
+    Alphas = clamp.(Alphas, 0.001, 100.0) # Ensure Alphas values are within the range [0.1, 1.0]
+    Nfs = clamp.(Nfs, 1.5, 2.8) # Ensure Nfs values are within the range [1.5, 2.5]
 
     add_sediment_to_output(Ns, isave, M, N)
 
@@ -115,10 +121,10 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     Y[1] = 50      # floc1
     Y[2] = 50      # floc2
 
-    x_index = 3
-    H = zeros(Ny, Ns+3)  # + 3 for augmented matrix 
-    H[1, x_index] = 1 
-    H[2, x_index+1] = 1 
+    x_index = Ns-4
+    H = zeros(Ny, Ns+4)  # + 3 for augmented matrix 
+    H[1, x_index] = 5 
+    H[2, x_index+1] = 5
 
 
     # Initialize parameter set for each ensemble member
@@ -126,10 +132,11 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     for i_ens in 1:N
         alpha = Alphas[i_ens]
         beta = Betas[i_ens]
+        beta2 = Beta2s[i_ens]
         nf = Nfs[i_ens]
-        floc_params = init_params(D, Ns, ssc_init, alpha, beta, nf)
+        floc_params = init_params(D, Ns, ssc_init, alpha, beta, beta2, nf)
         push!(floc_params_list, floc_params)
-        @printf("\tParameters for ensemble [%d]: alpha=%2.2f, beta=%2.2f, nf=%2.2f\n", i_ens, alpha, beta, nf)
+        @printf("\tParameters for ensemble [%d]: alpha=%2.2f, beta=%2.2f, beta2=%2.2f, nf=%2.2f\n", i_ens, alpha, beta, beta2, nf)
 
     end
 
@@ -158,8 +165,10 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
         # [2] Ensemble loop @ time step 
         @threads for i_ens in 1:N 
-                       # sed distribution ~  Ns ~ Shear ~ dt 
-            ssc[i_ens,:] .= run_floc_mod(floc_params_list[i_ens], ssc[i_ens, :], Ns, turbulent_shears[i], dt) 
+                       # sed distribution ~  Ns ~ Shear ~ dt                           #  turbulent_shears[i]
+            ssc_ = run_floc_mod(floc_params_list[i_ens], ssc[i_ens, :], Ns,  get_shear(i), dt) 
+            ssc_[.!isfinite.(ssc_)] .= 0
+            ssc[i_ens,:] .= ssc_ 
         end 
         # [3] Pack variables for next timestep 
         variables["G"] = turbulent_shears
@@ -169,17 +178,18 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         # [4] Perform EnKF update  
         if i%interval ==0 
             println("Performing EnKF update at time = $time")
-            augmented_matrix = zeros(Ns+3, N) 
+            augmented_matrix = zeros(Ns+4, N) 
             for EID in 1:N
                 augmented_matrix[1:Ns, EID] = ssc[EID, :]
-                augmented_matrix[Ns + 1, EID] = Alphas[EID] + abs(randn()*0.01)
-                augmented_matrix[Ns + 2, EID] = Betas[EID] + abs(randn()*0.01)
-                augmented_matrix[Ns + 3, EID] = Nfs[EID] + abs(randn()*0.01)
+                augmented_matrix[Ns + 1, EID] = Alphas[EID] #+ abs(randn()*0.01)
+                augmented_matrix[Ns + 2, EID] = Betas[EID] #+ abs(randn()*0.01)
+                augmented_matrix[Ns + 3, EID] = Nfs[EID]  #+ abs(randn()*0.01)
+                augmented_matrix[Ns + 4, EID] = Beta2s[EID] #+ abs(randn()*0.01)
             end
 
             ensemble_covariance = cov(augmented_matrix, dims=2) 
             ensemble_mean = mean(augmented_matrix, dims=2)
-            R = 4e3 #1e-3  # Observation error covariance matrix
+            R = 4e2 #1e-3  # Observation error covariance matrix
             # R = 4e3 #1e-3 
 
 
@@ -199,15 +209,15 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
                 ssc[EID, :] = augmented_matrix[1:Ns, EID]
 
                 # Update parameters for the ensemble
-                Alphas[EID] = clamp(augmented_matrix[Ns + 1, EID], 0.01, 1.0) 
-                Betas[EID]  = clamp(augmented_matrix[Ns + 2, EID], 0.001, 0.2)
+                Alphas[EID] = clamp(augmented_matrix[Ns + 1, EID], 0.0001, 10.0) 
+                Betas[EID]  = clamp(augmented_matrix[Ns + 2, EID], 0.0001, 10.0)
                 Nfs[EID]    = clamp(augmented_matrix[Ns + 3, EID], 1.1, 2.9)
-
+                Beta2s[EID] = clamp(augmented_matrix[Ns + 4, EID], 0.0, 3)
                 # println("New alpha = ", Alphas[EID], ", New beta = ", Betas[EID], ", New nf = ", Nfs[EID])
                 # println("ssc[EID, :] = ", ssc[EID, :])
 
                 # Re-calculate sediment parameters
-                floc_params_list[EID] = init_params(D, Ns, ssc[EID, :], Alphas[EID], Betas[EID], Nfs[EID])
+                floc_params_list[EID] = init_params(D, Ns, ssc[EID, :], Alphas[EID], Betas[EID], Beta2s[EID], Nfs[EID])
                 
             end
         end 
@@ -216,8 +226,9 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
             index = div(i, isave)
             save2output(index, "alpha", Alphas) 
             save2output(index, "beta", Betas)
+            save2output(index, "beta2", Beta2s)
             save2output(index, "nf", Nfs)
-            save2output(index, "G", turbulent_shears[i])
+            save2output(index, "G", get_shear(i)) #turbulent_shears[i])
             # save2output_ens(i_ens, index, "G", variables["G"][i_ens])
             # save2output_ens(i_ens, index, "sed_mass", floc_params.mass)
             save_sediment2output(index, ssc)
@@ -225,9 +236,10 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         end
     end 
     # ********************** save data ****************************
-    units_dict = Dict("G" => "1/s", "alpha" => "m^3/s", "beta" => "1/s", "nf" => "-", "sed_mass" => "kg/m^3")
+    units_dict = Dict("G" => "1/s", "alpha" => "m^3/s", "beta" => "1/s", "beta2" => "-", "nf" => "-", "sed_mass" => "kg/m^3")
     var2name = Dict("G" => "Turbulent shear", "alpha" => "Aggregation coefficient", 
-                    "beta" => "Fragmentation coefficient", "nf" => "Fractal dimension exponent", "sed_mass" => "Sediment mass concentration")
+                    "beta" => "Fragmentation coefficient","beta2" => "Fragmentation exponent", 
+                    "nf" => "Fractal dimension exponent", "sed_mass" => "Sediment mass concentration")
 
     nt = div(M,isave)
     
@@ -279,4 +291,4 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
 end 
 
-run_my_model("FlocMod_ADV_G_5.nc", true)
+run_my_model("FlocMod_ADV_G_9.nc", true)

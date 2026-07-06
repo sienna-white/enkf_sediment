@@ -9,6 +9,7 @@ using Printf
 struct FlocParams
     α::Float64
     β::Float64
+    β_2::Float64
     nf::Float64
     # ws::Vector{Float64} # Settling velocities specific to this thread
 
@@ -71,7 +72,7 @@ const ρ_s = 2650          # density of sediment kg/m^3
 # const nf = 1.9 #2.1 #1.9 #2.0                # fractal dimension exponent
 const Dp = 10e-6           # reference diameter (m)
 const Fy = 1e-10           # yield strength (N)
-const β_2 = 1.5 #          # winterwerp (2002)
+# const β_2 = 1.1 #1.5 #          # winterwerp (2002)
 # const β_3 = 3 - nf         # winterwerp (2002)
  #12 #12 
 # const total_mass = Ref{Float64}() # total mass of sediment (kg/m^3)
@@ -83,7 +84,7 @@ const β_2 = 1.5 #          # winterwerp (2002)
 # const nf = Ref{Float64}() # 1.9 #2.1 #1.9 #2.0  
 
 
-function init_params(D::Vector{<:Real}, N::Int, n::Vector{<:Float64}, alpha::Float64, beta::Float64, nf::Float64)
+function init_params(D::Vector{<:Real}, N::Int, n::Vector{<:Float64}, alpha::Float64, beta::Float64, beta2::Float64, nf::Float64)
 
     # @info "Initializing flocculation model with $N sediment classes ..."
     # @info "Primary particle diameter = $(D[1]) m, max particle diameter = $(D[end]) m"
@@ -116,11 +117,11 @@ function init_params(D::Vector{<:Real}, N::Int, n::Vector{<:Float64}, alpha::Flo
     # println("Mass = ", mass)
     # println("n = ", n)
     total_mass = sum(mass .* n)
-    @info "\t Initial total mass of flocculated sediment... $(total_mass*1000) g/L"
+    @debug "\t Initial total mass of flocculated sediment... $(total_mass*1000) g/L"
 
     # Create structure
     # Create structure to hold thread-isolated parameters
-    floc_params = FlocParams(alpha, beta, nf, total_mass, closest_half_mass, collision_matrix, D_ratio_4_B, floc_density, ws, particle_density, mass)
+    floc_params = FlocParams(alpha, beta, beta2, nf, total_mass, closest_half_mass, collision_matrix, D_ratio_4_B, floc_density, ws, particle_density, mass)
     return floc_params
 
 
@@ -220,7 +221,7 @@ end
 #     return nf, α, β, β_2 #, β_3
 # end 
 
-function run_floc_mod(fp::FlocParams, n::Vector{<:Float64}, N::Int, G::Real, dt::Int)
+function run_floc_mod(fp::FlocParams, n::Vector{<:Float64}, N::Int, G::Real, dt::Real)
     # println("[1] Initial number of primary particles = ", sum(n .* particle_density[]))  # check mass conservation
 
     g1_ = zeros(N)
@@ -353,7 +354,7 @@ end
 
 function B(fp::FlocParams, k::Int, G::Real)
     # Bi = beta * G**(beta_2) * D[i] * ((D[i] - Dp)/Dp)**(beta_3)
-    Bi = fp.D_ratio_4_B[k] * G^(β_2)
+    Bi = fp.D_ratio_4_B[k] * G^(fp.β_2)
     return Bi 
 end 
 
