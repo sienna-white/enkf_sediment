@@ -70,7 +70,7 @@ const ρ_s = 2650          # density of sediment kg/m^3
 
 # ************************************************
 # const nf = 1.9 #2.1 #1.9 #2.0                # fractal dimension exponent
-const Dp = 10e-6           # reference diameter (m)
+const Dp = 1e-6           # reference diameter (m)
 const Fy = 1e-10           # yield strength (N)
 # const β_2 = 1.1 #1.5 #          # winterwerp (2002)
 # const β_3 = 3 - nf         # winterwerp (2002)

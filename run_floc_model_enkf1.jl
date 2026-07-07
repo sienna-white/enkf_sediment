@@ -86,9 +86,9 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     Ns = 40                  # Number of sediment size classes
 
     ssc0 = zeros(N, Ns)     # Matrix for sediment concentration (Nz x Ns)
-    ssc0[:, 1:30] .= 300    # Matrix for sediment concentration (N x Ns)
+    ssc0[:, 1:30] .= 2000    # Matrix for sediment concentration (N x Ns)
     ssc_init = ssc0[1, :]   # Initial sediment concentration for each size class
-    D = logrange(10e-6, 1500e-6, Ns)      # Sediment grain sizes (\mu m )
+    D = logrange(1e-6, 1500e-6, Ns)      # Sediment grain sizes (\mu m )
     D = collect(D)
 
     Alphas = create_lognormal_distribution(0.35, 0.3^2, N)
@@ -116,15 +116,19 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     #***************************************************************************
     #   Observations
     #***************************************************************************
-    Ny = 7 
+    Ny = 2
     Y = zeros(Ny) 
-    Y[1] = 50      # floc1
-    Y[2] = 50      # floc2
 
-    x_index = Ns-4
+    
+    x_index =10
+    Y[1] = 2000     # floc1
+    Y[2] = 3000     # floc2
+
+   
     H = zeros(Ny, Ns+4)  # + 3 for augmented matrix 
-    H[1, x_index] = 5 
-    H[2, x_index+1] = 5
+    H[1, x_index] = 1
+    H[2, x_index+1] = 1
+    println("Inserting observations at size classes $x_index and $(x_index+1)--> Ds=$(D[x_index]*1e6) and Ds=$(D[x_index+1]*1e6) microns")
 
 
     # Initialize parameter set for each ensemble member
@@ -144,13 +148,13 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     variables["SSC"] = ssc0
     
     
-        
-        # Calculate settling velocities for each size class
-        # ws = floc_params.ws
-        # for i in 1:Ns
-        #     # println("\t Size class $i: ws = $(ws[i]*100) cm/s")
-        #     @printf("\t Size class %d, ws =  %2.2f cm/s\n", i, (ws[i_ens]*100))
-        # end
+    
+    # Calculate settling velocities for each size class
+    # ws = floc_params.ws
+    # for i in 1:Ns
+    #     # println("\t Size class $i: ws = $(ws[i]*100) cm/s")
+    #     @printf("\t Size class %d, ws =  %2.2f cm/s\n", i, (ws[i_ens]*100))
+    # end
      
         
 
@@ -170,6 +174,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
             ssc_[.!isfinite.(ssc_)] .= 0
             ssc[i_ens,:] .= ssc_ 
         end 
+        
         # [3] Pack variables for next timestep 
         variables["G"] = turbulent_shears
         variables["SSC"] = ssc
@@ -195,7 +200,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
             kalman_gain = (ensemble_covariance * transpose(H)) / (H * ensemble_covariance * transpose(H) + R * I)
  
-            for EID in 1:N
+            @threads for EID in 1:N
                 # Analysis step 
                 current_state = augmented_matrix[:, EID]
                 innovation = (Y .- H * current_state)
@@ -291,4 +296,5 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
 end 
 
-run_my_model("FlocMod_ADV_G_9.nc", true)
+run_my_model("FlocMod_ADV_G_16.nc", true)
+
