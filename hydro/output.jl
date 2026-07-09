@@ -13,23 +13,30 @@ function create_output_dict(M::Int, isave::Int, Vars::Vector{<:String}, N::Int, 
 end 
 # ***********************************************************************
 
+function add_flux_to_output(Ns, isave, M, N, Nflux, output=output)
+    @info "Creating output structure to save sediment concentrations..."
+    n_saved_steps = div((M), isave)#- 1
+    output["flux"] = zeros(Float64, N, Nflux, n_saved_steps)
+end
+
+
 function add_sediment_to_output(Ns, isave, M, N, output=output)
     @info "Creating output structure to save sediment concentrations..."
     n_saved_steps = div((M), isave)#- 1
-
     output["ssc"] = zeros(Float64, N, Ns, n_saved_steps)
 end
 
 # ***********************************************************************
-function save_sediment2output_ens(Nens, index, ssc, output=output)
-    output["ssc"][Nens,  :, index] .= ssc
+function save_sediment2output_ens(Nens, index, ssc, output=output, var="ssc")
+    output[var][Nens,  :, index] .= ssc
 end 
 
 
 
-function save_sediment2output(index, ssc, output=output)
+
+function save_sediment2output(index, ssc, var="ssc", output=output)
     # print("Saving $varname at time $time")
-    output["ssc"][:,  :, index] .= ssc
+    output[var][:,  :, index] .= ssc
     # push!(times, time)
 end 
 
