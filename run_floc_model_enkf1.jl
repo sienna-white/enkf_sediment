@@ -42,9 +42,9 @@ end
 
 function run_my_model(file_out_name::String, floc_on::Bool=true)
     #********************** SPATIAL DOMAIN  ***************************
-    N = 60 #35 #50 #250    # number of ensembles points
+    N = 50 #35 #50 #250    # number of ensembles points
     dt = 0.5    # (seconds) size of time step 
-    M  = 3600*2 #10 #25 #*5 #*5*2  #24*5 #3600*5 #3600
+    M  = 3600*8 #*10 #10 #25 #*5 #*5*2  #24*5 #3600*5 #3600
 
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
     isave = 60 #*2 #10* #60*10*5 #*10
@@ -58,25 +58,26 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     specific_heat_air = 1007        # J/kg-degC x RH
 
     # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
-    Ns = 32                 # Number of sediment size classes
+    Ns = 50                 # Number of sediment size classes
     ssc0 = zeros(N, Ns)     # Matrix for sediment concentration (Nz x Ns)
-    ssc0[:, 1:4] .= 1200   # Matrix for sediment concentration (N x Ns)
-    ssc0 = ssc0 .+ randn(N, Ns).*2
+    # ssc0[:, 1:4] .= abs.(randn(N, 4))*1e5  # Matrix for sediment concentration (N x Ns)
+    ssc0[:, :] .= [0, 0, 0, 0, 0, 1569393788, 13948421398, 34186735163, 18930699648, 9810032483, 6355491536, 7542553597, 8049608268, 4527016578, 2481863754, 1452287975, 1039818408, 765481304, 495921900, 376853152, 255783335, 185058484, 112515188, 73132356, 47481745, 34863237, 22586368, 18581423, 15560227, 10787057, 7192500, 4581169, 2739416, 1774748, 984630, 513701, 260245, 129624, 61627, 25981, 9148, 5926, 1635, 1059, 686, 444, 288, 186, 120, 78]
+    ssc0 = ssc0 .+ abs.(randn(N, Ns)) #.*2
     D = logrange(1e-6, 1200e-6, Ns)      # Sediment grain sizes (\mu m )
     D = collect(D)
     Volumes = (4/3)*pi*(D./2).^3
 
     #***************************************************************************
     Alphas = create_lognormal_distribution(0.35, 0.3^2, N)
-    Betas  = create_lognormal_distribution(0.045, 0.05^2, N) #(0.055, 0.05^2, N)
-    Beta2s = create_lognormal_distribution(1.0, 0.5^2, N) #(0.055, 0.05^2, N)
-    Nfs    = create_lognormal_distribution(1.9, 0.3^2, N)
+    Betas  = create_lognormal_distribution(0.1, 0.05^2, N) #(0.055, 0.05^2, N)
+    Beta2s = create_lognormal_distribution(1.5, 0.5^2, N) #(0.055, 0.05^2, N)
+    Nfs    = create_lognormal_distribution(2.1, 0.3^2, N)
 
     #***************************************************************************
     Nflux = 2
-    Flux_ind = sum(D.<100e-6)
+    Flux_ind = sum(D.<50e-6)
     Flux   = rand(Normal(0, 0.01), (N, 2))  # Random coefficients for our Flux term
-    Betas  = clamp.(Betas, 0.001, 0.5)      # Ensure Betas values are within the range [0.01, 0.1]
+    Betas  = clamp.(Betas, 0.001, 1.0)      # Ensure Betas values are within the range [0.01, 0.1]
     Alphas = clamp.(Alphas, 0.001, 100.0)   # Ensure Alphas values are within the range [0.1, 1.0]
     Nfs    = clamp.(Nfs, 1.5, 2.8)          # Ensure Nfs values are within the range [1.5, 2.5]
     add_sediment_to_output(Ns, isave, M, N)
@@ -216,13 +217,14 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         Betas = clamp.(Betas, 0.001, 0.5) # Ensure Betas values are within the range [0.01, 0.1]
         Alphas = clamp.(Alphas, 0.001, 100.0) # Ensure Alphas values are within the range [0.1, 1.0]
         Nfs = clamp.(Nfs, 1, 2.99) # Ensure Nfs values are within the range [1.5, 2.5]
+        Beta2s = clamp.(Beta2s, 0.5, 3) # Ensure Betas values are within the range [0.01, 0.1]
 
         time = Times[i];
         # ***************************************************************
         # [1] Advance sediment concentrations for each size class
         ssc = variables["SSC"]
-        ssc .*= (1 .+ randn(N, Ns).*0.1) 
-        # ssc += randn(N, Ns).*10
+        ssc += abs.(randn(N, Ns)) 
+        ssc .*= (1 .+ randn(N, Ns).*0.12) 
         ssc = clamp.(ssc, 0.0, Inf) # Ensure no negative concentrations
 
         # [2] Ensemble loop @ time step 
@@ -245,8 +247,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
             Flux_ = zeros(Ns)
             Flux_[1:Flux_ind] .= Flux[EID, 1]
             Flux_[Flux_ind+1:end] .= Flux[EID, 2]
-            ssc_ = ssc_ .+ dt.* (velocity.*1e-2.*sin.(Flux_).*ssc_) # Add lateral Flux term to sediment concentration
-            ssc_ = clamp.(ssc_, 1e-3, 1e9) # Ensure no negative concentrations
+            ssc_ = ssc_ .+ dt.* (velocity.*1e-3.*sin.(Flux_).*ssc_) # Add lateral Flux term to sediment concentration
+            ssc_ = clamp.(ssc_, 1e-6, 1e9) # Ensure no negative concentrations
             ssc_[.!isfinite.(ssc_)] .= 0 
             ssc[EID,:] .= ssc_ 
         end 
@@ -265,10 +267,6 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
             R = get_R(time)
             IND = Ns + Nflux 
                         # augmented_matrix[.!isfinite.(augmented_matrix)] .= 1e-8 
-            # ensemble_mean = mean(augmented_matrix, dims=2)  
-            # A = augmented_matrix .- ensemble_mean
-            # Pf = (A * transpose(A)) / (N - 1)  # Forecast error covariance
-
 
             for EID in 1:N
                 augmented_matrix[1:Ns, EID] = ssc[EID, :]
@@ -277,7 +275,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
                 augmented_matrix[IND + 2, EID] = Betas[EID] 
                 augmented_matrix[IND + 3, EID] = Nfs[EID] 
                 augmented_matrix[IND + 4, EID] = Beta2s[EID]
-                augmented_matrix[:, EID] = augmented_matrix[:, EID] .+ randn(Ns_aug).*1e-6 # Add some random noise to the augmented matrix
+                augmented_matrix[:, EID] = augmented_matrix[:, EID] #.+ randn(Ns_aug).*1e-6 # Add some random noise to the augmented matrix
             end
      
             augmented_matrix[.!isfinite.(augmented_matrix)] .= randn().*1e-6
@@ -289,8 +287,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
                 # Analysis step 
                 current_state = augmented_matrix[:, EID]
                 # println("Before EnKF update, ensemble [$EID] has sediment concentrations: ", augmented_matrix[1:Ns, EID])
-                println("[1-OBS]: ", observations)
-                println("[1-MOD]: ", (H * current_state))
+                # println("[1-OBS]: ", observations)
+                # println("[1-MOD]: ", (H * current_state))
 
                 innovation = (observations .- H * current_state)
                 shift = kalman_gain * innovation
@@ -302,17 +300,18 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
                 # Update sediment concentration for the ensemble 
                 ssc[EID, :] = augmented_matrix[1:Ns, EID]
-                println("[2-MOD]: ", (H * augmented_matrix[:, EID])) 
-                println("\n\n")
+                # println("[2-MOD]: ", (H * augmented_matrix[:, EID])) 
+                # println("\n\n")
 
                 # Update flux coefficents 
                 Flux[EID, :] = augmented_matrix[Ns+1:IND, EID]
                 
                 # Update parameters for the ensemble
-                Alphas[EID] = clamp(augmented_matrix[IND + 1, EID] + randn()*1e-4, 0.0001, 10.0) 
-                Betas[EID]  = clamp(augmented_matrix[IND + 2, EID] + randn()*1e-4, 0.0001, 10.0)
-                Nfs[EID]    = clamp(augmented_matrix[IND + 3, EID] + randn()*1e-3, 1.1, 2.9)
-                Beta2s[EID] = clamp(augmented_matrix[IND + 4, EID] + randn()*1e-3, 0.0, 3)
+                Alphas[EID] = clamp(augmented_matrix[IND + 1, EID] + randn()*1e-5, 0.0001, 10.0) 
+                Betas[EID]  = clamp(augmented_matrix[IND + 2, EID] + randn()*1e-5, 0.0001, 10.0)
+                Nfs[EID]    = clamp(augmented_matrix[IND + 3, EID] + randn()*1e-4, 1.1, 2.9)
+                Beta2s[EID] = clamp(augmented_matrix[IND + 4, EID] + randn()*1e-3, 0.5, 3)
+
                 # Re-calculate sediment parameters
                 floc_params_list[EID] = init_params(D, Ns, ssc[EID, :], Alphas[EID], Betas[EID], Beta2s[EID], Nfs[EID])   
             end
@@ -343,10 +342,12 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     ds = NCDataset(file_out_name,"c")
     ds.attrib["title"] = "floc mod test"
 
-    # model_time = collect(1:M)
     defDim(ds, "N", N) 
     defDim(ds, "time", nt)
     defDim(ds, "Nf", Nflux)
+    defDim(ds, "Ny", N_lisst)
+
+
     println("Length of SSC is ", size(output["ssc"]))
 
     defDim(ds, "Ds", length(D))
@@ -371,8 +372,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     #     "units" =>  "kg/particle", "long_name" => "mass of each floc (fractal!)"))
     # v[:] = M1
 
-    v = defVar(ds, "N", Float32, ("N",))
-    v[:] = collect(1:N)
+    v = defVar(ds, "H", Float64, ("Ny", "Ds",) , attrib = OrderedDict("obs operator" => "particle to vol-lisst"))
+    v[:] = H[:, 1:Ns]
 
     v = defVar(ds, "time", Float32, ("time",), attrib = OrderedDict("units" => "seconds"))
     v[:] = real_times_saved[1:end-1] #real_times_saved #collect(1:nt) #model_time
@@ -387,7 +388,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     close(ds)
 end 
 
-run_my_model("FlocMod_ADV_G_33.nc", true)
+run_my_model("FlocMod_ADV_G_34.nc", true)
 
 # FlocMod_ADV_G_8 >> reduced noise for the random walk 
 # FlocMod_ADV_G_9 >> reduced noise for the random walk / back to 0.2 dt 
