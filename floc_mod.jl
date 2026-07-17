@@ -384,10 +384,10 @@ function flocmod_mass_redistribute(n::Vector{<:Float64}, N::Int)
     NNtmp[neg_mask] .= 0.0
 
     if mneg > 0.0
-        if npos == 0
-            @error "CAUTION: all floc sizes have negative mass! "
-            exit(1)
-        end 
+        # if npos == 0
+        #     @error "CAUTION: all floc sizes have negative mass! "
+        #     exit(1)
+        # end 
         
         # Redistribute negative mass linearly over positive classes
         for iv in 1:N

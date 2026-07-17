@@ -447,9 +447,9 @@ function flocmod_mass_redistribute(fp::FlocParams, n::Vector{<:Float64}, N::Int)
 
     if mneg > 0.0
         if npos == 0
-            @error "CAUTION: all floc sizes have negative mass! "
+            # @error "CAUTION: all floc sizes have negative mass! "
             # exit(1)
-            n = zeros(N)
+            n = abs.(randn(N)).*50 # zeros(N)
         end 
         
         # Redistribute negative mass linearly over positive classes
