@@ -42,12 +42,12 @@ end
 
 function run_my_model(file_out_name::String, floc_on::Bool=true)
     #********************** SPATIAL DOMAIN  ***************************
-    N = 75 #35 #50 #250    # number of ensembles points
+    N = 65 #35 #50 #250    # number of ensembles points
     dt = 1 #0.5 #0.5    # (seconds) size of time step 
-    M  = 3600*8*1 #*15 #*20 #*10 #10 #25 #*5 #*5*2  #24*5 #3600*5 #3600
+    M  = 3600*1 #8*5 #*15 #*20 #*10 #10 #25 #*5 #*5*2  #24*5 #3600*5 #3600
 
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
-    isave = 60*10 #*2 #10* #60*10*5 #*10
+    isave = 30 #60*10 #*2 #10* #60*10*5 #*10
     var2save = ["G", "nf", "alpha", "beta", "beta2"]
 
     create_output_dict(M, isave, var2save, N)
@@ -69,8 +69,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     Volumes = (4/3)*pi*(D./2).^3
 
     #***************************************************************************
-    alpha0 = 0.35
-    beta0  = 0.15 
+    alpha0 = 0.0 # 0.35
+    beta0  = 0.0 #0.15 
     nf0 = 2.5 # change?  
     beta20 = 1.5
 
@@ -79,11 +79,11 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     Nfs = randn(N)
     Beta2s = randn(N)
     #***************************************************************************
-    Nflux = 2
-    Flux_ind = sum(D.<50e-6)
-    Flux   = rand(Normal(0, 0.3),  (N, 2))  # Random coefficients for our Flux term
+    Nflux =  0 
+    # Flux_ind = sum(D.<50e-6)
+    # Flux   = rand(Normal(0, 0.3),  (N, 2))  # Random coefficients for our Flux term
     add_sediment_to_output(Ns, isave, M, N)
-    add_flux_to_output(Ns, isave, M, N, Nflux)
+    # add_flux_to_output(Ns, isave, M, N, Nflux)
 
     #***************************************************************************
     #   OBSERVATIONAL DATA 
@@ -164,7 +164,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     save2output(1, "nf", Nfs)
     save2output(1, "G", get_shear(1))
     save_sediment2output(1, ssc0, "ssc")
-    save_sediment2output(1, Flux,"flux")
+    # save_sediment2output(1, Flux,"flux")
     real_times_saved = [Times[1]]
     #***************************************************************************
 
@@ -187,7 +187,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     #*************************** TIME LOOP  *********************************
     @info "Starting time loop for $M steps with dt = $dt seconds"
     augmented_matrix = zeros(Ns_aug, N)  # Pre-allocate array 
-    noise_Nflux = zeros(N, Nflux) 
+    # noise_Nflux = zeros(N, Nflux) 
     noise_N     = zeros(N)
     noise_ssc   = zeros(N, 11)
 
@@ -206,8 +206,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         #***************************************************************************
         #   Random walk for parameters and flux term
         #***************************************************************************
-        Flux  .*=  (1 .+ randn(N, Nflux).* 0.01) # Add some random noise to the flux term
-        noise = 0.001 
+        # Flux  .+=  randn(N, Nflux).* 0.0001 # Add some random noise to the flux term
+        noise = 0.0001
         Alphas.+=  randn!(noise_N) .* noise
         Betas .+=  randn!(noise_N) .* noise 
         Beta2s.+=  randn!(noise_N).* noise
@@ -226,9 +226,10 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         ssc += abs.(randn(N, Ns)) 
 
         # ssc .+= (1 .+ randn(N, Ns).* 0.05) # .*(D[1]./D)) 
-
-        ssc .+= 1000 .*(D[1]./ D') .*randn(N, Ns) # ) #.* 0.1
-        ssc = clamp.(ssc, 0.0, Inf) # Ensure no negative concentrations
+        # ssc .+= 100 .* randn(N, Ns) # ) #.* 0.1
+        # 5000 .*(D[1]./ D') Volumes[1]
+        ssc .+= randn(N, Ns) .* (1e-8./Volumes')  # ) #.* 0.1
+        clamp!(ssc, 0.0, Inf) # Ensure no negative concentrations
 
         # [2] Ensemble loop @ time step 
         shear = get_shear(time)
@@ -238,7 +239,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         @threads for EID in 1:N 
             alpha = alpha0 * exp(Alphas[EID]) 
             beta = beta0 * exp(Betas[EID]) 
-            beta2 = beta20 * exp(0.1*Beta2s[EID]) 
+            beta2 = beta20 * exp(Beta2s[EID]) 
             nf = nf0 * sin(Nfs[EID])^2 
             floc_params = init_params(D, Ns, ssc0[EID,:], alpha, beta, beta2, nf)
             ssc_ = run_floc_mod(floc_params, ssc[EID, :], Ns,  shear, dt) 
@@ -247,8 +248,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
             # Flux_ = zeros(Ns)
             # Flux_[1:Flux_ind] .= Flux[EID, 1]
             # Flux_[Flux_ind+1:end] .= Flux[EID, 2]
-            # ssc_ = ssc_ .+ dt.* (sin.(Flux_).*ssc_) # velocity.*1e-3.* Add lateral Flux term to sediment concentration
-            ssc_ = clamp.(ssc_, 1e-6, 1e10) # Ensure no negative concentrations
+            # ssc_ = ssc_ .+ dt.* 0.01*(sin.(Flux_).*ssc_) # velocity.*1e-3.* Add lateral Flux term to sediment concentration
+            clamp!(ssc_, 1e-6, 1e10) # Ensure no negative concentrations
             ssc_[.!isfinite.(ssc_)] .= 0 
             ssc[EID,:] .= ssc_ 
         end 
@@ -264,12 +265,12 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         if run_analysis
             text = @sprintf("\t Observations available at time = %2.1f hours (timestep %d/%d)", time/3600, i, M)            
             println(text)
-            R = get_R(time).* 1e-3 
+            R = get_R(time) #.* 1e-4 
             IND = Ns + Nflux 
                         # augmented_matrix[.!isfinite.(augmented_matrix)] .= 1e-8 
             for EID in 1:N
                 augmented_matrix[1:Ns, EID] = ssc[EID, :]
-                augmented_matrix[Ns+1:IND, EID] = Flux[EID,:]
+                # augmented_matrix[Ns+1:IND, EID] = Flux[EID,:]
                 augmented_matrix[IND + 1, EID] = Alphas[EID]
                 augmented_matrix[IND + 2, EID] = Betas[EID] 
                 augmented_matrix[IND + 3, EID] = Nfs[EID] 
@@ -281,29 +282,35 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
             ensemble_covariance = cov(augmented_matrix, dims=2) 
             kalman_gain = (ensemble_covariance * transpose(H)) / (H * ensemble_covariance * transpose(H) + Diagonal(R))
-            HPHt = H * ensemble_covariance * transpose(H)
-
-            @info "‖HPHᵀ‖ = $(norm(HPHt)), ‖R‖ = $(norm(R)), mean(diag(HPHt))/mean(R) = $(mean(diag(HPHt))/mean(R))"
+            # HPHt = H * ensemble_covariance * transpose(H)
+            # @info "‖HPHᵀ‖ = $(norm(HPHt)), ‖R‖ = $(norm(R)), mean(diag(HPHt))/mean(R) = $(mean(diag(HPHt))/mean(R))"
 
             # ***************************************************************
              for EID in 1:N
                 # Analysis step 
-                current_state = augmented_matrix[:, EID]
-                # println("[1-OBS]: ", observations)
-                # println("[1-MOD]: ", (H * current_state))
-
-                innovation = (observations .- H * current_state)
+                # current_state = augmented_matrix[:, EID]
+  
+                innovation = (observations .- H * augmented_matrix[:, EID])
+                # obs2state = inv(H) * observations
+                # augmented_matrix[:, EID] = obs2state # TEMP TEMP TEMP
                 shift = kalman_gain * innovation
                 augmented_matrix[:, EID] = augmented_matrix[:, EID] + shift
 
                 # Update sediment concentration for the ensemble 
                 ssc[EID, :] = augmented_matrix[1:Ns, EID]
-                # println("[2-MOD]: ", (H * augmented_matrix[:, EID])) 
-                # println("\n\n")
+                # if EID==1
+                # cstate = H * current_state
+                # astate = H * augmented_matrix[:, EID]
+
+                #     println("[1-OBS]: ", observations[30:end])
+                #     println("[1-MOD]: ", cstate[30:end])
+                #     println("[2-MOD]: ", astate[30:end])
+                #     println("\n\n")
+                # end 
                 # exit()
 
                 # Update flux coefficents 
-                Flux[EID, :] = augmented_matrix[Ns+1:IND, EID]
+                # Flux[EID, :] = augmented_matrix[Ns+1:IND, EID]
                 
                 # Update parameters for the ensemble
                 Alphas[EID] = augmented_matrix[IND + 1, EID] 
@@ -311,6 +318,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
                 Nfs[EID]    = augmented_matrix[IND + 3, EID] 
                 Beta2s[EID] = augmented_matrix[IND + 4, EID]
             end
+            variables["SSC"] = ssc
         end 
         # ***************************************************************
         # ***************************************************************
@@ -322,7 +330,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
             save2output(index, "nf", Nfs)
             save2output(index, "G", get_shear(time))
             save_sediment2output(index, ssc, "ssc")
-            save_sediment2output(index, Flux,"flux")
+            # save_sediment2output(index, Flux,"flux")
             push!(real_times_saved, time)
         end
     end 
@@ -350,9 +358,9 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         "units" =>  "parts/m3", "long_name" => "suspended sediment concentration"))
     v[:,:,:] = output["ssc"]
 
-    v = defVar(ds, "flux", Float64,("N", "Nf", "time"), attrib = OrderedDict(
-        "units" =>  "parts/m3", "long_name" => "suspended sediment influx"))
-    v[:,:,:] = output["flux"]
+    # v = defVar(ds, "flux", Float64,("N", "Nf", "time"), attrib = OrderedDict(
+    #     "units" =>  "parts/m3", "long_name" => "suspended sediment influx"))
+    # v[:,:,:] = output["flux"]
 
     # D1, M1 = get_particle_density() 
     # v = defVar(ds, "np", Float64, ("Ds",), attrib = OrderedDict(
@@ -378,7 +386,29 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     close(ds)
 end 
 
-run_my_model("FlocMod_ADV_G_31.nc", true)
+run_my_model("FlocMod_ADV_G_113.nc", true)
+
+
+# 100 (param set #58 , longer time span) 
+# 101 (volume noise = 2e-9, param noise = 0.001)  
+# 102 (volume noise = 2e-9, param noise = 0.0005) >> really good 
+# 103 (volume noise = 2e-9, param noise = 0.0001)           // PID 1658384
+# 104 (volume noise = 1e-9, param noise = 0.0001)           // PID 1658152
+# 105 FLUX  ON! (volume noise = 1e-9, param noise = 0.0001) // PID 1657934
+# 106 FLUX  ON! (volume noise = 2e-9, param noise = 0.0001) // PID 1658604
+# 107  FLUX  ON! flux * 0.01
+# 108  FLUX OFF + removed from eqns (volume noise = 2e-9, param noise = 0.0001)
+# 109  FLUX OFF + removed from eqns (volume noise = 1e-9, param noise = 0.0001) >> this looks better
+# 110  FLUX OFF + removed from eqns (volume noise = 1e-9, param noise = 0.0002) >> 
+# 111  FLUX OFF + removed from eqns (volume noise = 1e-9, param noise = 0.0003) 
+# 112  FLUX OFF + removed from eqns (volume noise = 1e-8, param noise = 0.0001) 
+
+
+
+
+
+
+
 
 # FlocMod_ADV_G_8 >> reduced noise for the random walk 
 # FlocMod_ADV_G_9 >> reduced noise for the random walk / back to 0.2 dt 
@@ -389,17 +419,6 @@ run_my_model("FlocMod_ADV_G_31.nc", true)
 # FlocMod_ADV_G_16 >> dividing shear by 10 lol 
 # FlocMod_ADV_G_17 >> dt back to 0.5
 
-# 18 > variance mult to .*1e-5
-# 18 > variance mult to .*1e-6, smaller IC 
-# 20 > longer run 
-# 21 > REMOVING random walk
-# 26 >> adding noise to SSC iC 
-# 27 >> reducing R 
-# 27 >> reducing R , reducing noise in IC 
-# 29 >> adding noise to SSC at each time step... ensemble appears to be collapsing 
-# 30 >> commenting out                 # augmented_matrix[:, EID] = clamp.(augmented_matrix[:, EID], 1e-12, Inf)
-# 31 >> more noise!  /// issues with finite stuff ? 
-# 32 >> more noise!  /// random walk for parameters too  
 
 #### 
 # 1. >> randn!(noise_N).* 0.008 , dt = 0.5  >> kinda bad fit, even though spread is large ? 
@@ -424,3 +443,30 @@ run_my_model("FlocMod_ADV_G_31.nc", true)
 # 18. alpha0 = 0.35, 0.01 for param niose  
 # 19  0.006 for param niose  
 # 2% noise ... 
+
+# 32 >> volume noise of 0.01
+# 33 > volume noise 0.001
+# 34 > volume noise 0.1
+# 35 >> volume noise 0.001, param noise 0.003
+# 37 > 1e-5 volume noise  
+# 38 looks really good !!  >> the best
+# 39 > 1e-7./Volumes'
+# 40 > 1e-8./Volumes'
+# 41 > 1e-9./Volumes'
+# 1e-5
+# 1e-6
+# 44 1e-6 volume / noise = 0.003 
+# 45 1e-6 volume / noise = 0.001
+# 46 1e-7 volume / noise = 0.001
+# 47 1e-8 volume / noise = 0.001
+# 48 1e-8 volume / noise = 0.002
+# 49 1e-8 volume / noise = 0.003 >> pretty good 
+# 50 1e-8 volume / noise = 0.004
+# 51 1e-7 volume / noise = 0.004
+# 52 1e-7 volume / noise = 0.003
+# 53 1e-7 volume / noise = 0.002
+# 54 2e-7 volume / noise = 0.001 
+# 55 2e-7 volume / noise = 0.0005 >> bad 
+# 56 2e-8 volume / noise = 0.0005 >> pretty good 
+# 57 2e-8 volume / noise = 0.002 >> worse
+# 58 2e-8 volume / noise = 0.001 >>  will use 

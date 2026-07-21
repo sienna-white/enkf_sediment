@@ -15,7 +15,7 @@ struct FlocParams
 
     # Calculated properties
     # chol::Ref{Union{Nothing, Matrix{Float64}}} # Cache Cholesky decomposition
-    total_mass::Float64
+    # total_mass::Float64
     closest_half_mass::Vector{Int}
     collision_matrix::Matrix{Float64}
     D_ratio_4_B::Vector{Float64}
@@ -116,12 +116,12 @@ function init_params(D::Vector{<:Real}, N::Int, n::Vector{<:Float64}, alpha::Flo
 
     # println("Mass = ", mass)
     # println("n = ", n)
-    total_mass = sum(mass .* n)
-    @debug "\t Initial total mass of flocculated sediment... $(total_mass*1000) g/L"
+    # total_mass = sum(mass .* n)
+    # @debug "\t Initial total mass of flocculated sediment... $(total_mass*1000) g/L"
 
     # Create structure
     # Create structure to hold thread-isolated parameters
-    floc_params = FlocParams(alpha, beta, beta2, nf, total_mass, closest_half_mass, collision_matrix, D_ratio_4_B, floc_density, ws, particle_density, mass)
+    floc_params = FlocParams(alpha, beta, beta2, nf, closest_half_mass, collision_matrix, D_ratio_4_B, floc_density, ws, particle_density, mass)
     return floc_params
 
 
@@ -319,7 +319,6 @@ function l1(fp::FlocParams, n::Vector{<:Float64}, k::Int, G::Real, N::Int)
 # need to fix mass balance with aggregation / loss terms here! 
     # Loss due to collisions for class k
     l1_ = 0 
-
     α = fp.α
     particle_density = fp.particle_density
     for i in 1:N  # note this is N in original flocmod equations 
