@@ -12,42 +12,26 @@ using Statistics
 using LinearAlgebra
 using Distributions
 using Base.Threads
+using Compat # for older julia versoins 
 
-include("hydro/calculate_physical_variables.jl") 
-include("hydro/advance_variables.jl")
-include("hydro/forcings.jl") 
+
+# include("hydro/calculate_physical_variables.jl") 
+# include("hydro/advance_variables.jl")
+# include("hydro/forcings.jl") 
 include("hydro/output.jl")
 include("floc_mod_enkf.jl")
 using .floc_mod
 
 println("Using $(Threads.nthreads()) threads for parallelization.\n\n")
 
-function create_lognormal_distribution(mean::Float64, var::Float64, N::Int)
-    # 2. Convert to the underlying Normal distribution parameters (μ and σ)
-    # Formula for underlying variance
-    σ² = log(1.0 + (var/mean^2))
-    σ = sqrt(σ²)
-
-    # Formula for underlying mean
-    μ = log(mean) - 0.5 * σ²
-
-    # 3. Create the Log-Normal distribution object
-    dist = LogNormal(μ, σ)
-
-    # 4. Sample from it
-    # Generate an array of 10,000 samples:
-    samples = rand(dist, N)
-    return samples
-end
-
 function run_my_model(file_out_name::String, floc_on::Bool=true)
     #********************** SPATIAL DOMAIN  ***************************
     N = 100 #65 #35 #50 #250    # number of ensembles points
     dt = 1 #0.5 #0.5    # (seconds) size of time step 
-    M = 3600*6 #8 #*5 #*15 #*20 #*10 #10 #25 #*5 #*5*2  #24*5 #3600*5 #3600
+    M = 3600   #24*5 #3600*5 #3600
 
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
-    isave = 60*10 #*2 #10* #60*10*5 #*10
+    isave = 30 #*2 #10* #60*10*5 #*10
     var2save = ["G", "nf", "alpha", "beta", "beta2"]
 
     create_output_dict(M, isave, var2save, N)
@@ -61,11 +45,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     Ns = 50                 # Number of sediment size classes
     ssc0 = zeros(N, Ns)     # Matrix for sediment concentration (Nz x Ns)
     ssc0[:, 1:4] .= abs.(randn(N, 4))*1e3  # Matrix for sediment concentration (N x Ns)
-    # ic =  [0, 0, 0, 0, 0, 1569393788, 13948421398, 34186735163, 18930699648, 9810032483, 6355491536, 7542553597, 8049608268, 4527016578, 2481863754, 1452287975, 1039818408, 765481304, 495921900, 376853152, 255783335, 185058484, 112515188, 73132356, 47481745, 34863237, 22586368, 18581423, 15560227, 10787057, 7192500, 4581169, 2739416, 1774748, 984630, 513701, 260245, 129624, 61627, 25981, 9148, 5926, 1635, 1059, 686, 444, 288, 186, 120, 0]
-    # ssc0[:, :] .= ic./100 
     ssc0 = ssc0 .+ abs.(randn(N, Ns)) #.*2
     D = logrange(1e-6, 500e-6, Ns)      # Sediment grain sizes (\mu m )
-    # D = LinRange(1e-6, 1700e-6, Ns)      # Sediment grain sizes (\mu m )
     D = collect(D)
     Volumes = (4/3)*pi*(D./2).^3
 
@@ -91,15 +72,10 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     #*************************************************************************** 
     @info "Reading observational data..."
 
-    # Velocity data 
-    df = CSV.read("/global/homes/s/siennaw/scratch/siennaw/scripts/enkf_sediment/adcp_lateral_velocity.csv", DataFrame)
-    get_velocity = LinearInterpolation(df.lateral_velocity, df.seconds, extrapolation = ExtrapolationType.Linear)
-
     # Shear data
-    df = CSV.read("/global/homes/s/siennaw/scratch/siennaw/scripts/enkf_sediment/adv_shear_4_model.csv", DataFrame)
-    df.smoothed_shear = df.smoothed_shear 
-    get_shear = LinearInterpolation(df.smoothed_shear, df.seconds, extrapolation = ExtrapolationType.Linear)
-
+    df = CSV.read("adv_shear_4_model.csv", DataFrame)
+    get_shear = LinearInterpolation(df.smoothed_shear, df.seconds) #, extrapolation = DataInterpolations.ExtrapolationType.Linear)
+    # get_shear = LinearInterpolation(df.smoothed_shear, df.seconds; extrapolation = ExtrapolationType.Linear)
     time_steps = df[!, "seconds"]
     turbulent_shears = df[!, "smoothed_shear"] 
     @assert dt<=1 "Head's up: Time step dt must be less than 1 second for this shear data to work properly."
@@ -112,7 +88,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     N_lisst = length(Ds_LISST)
 
     # Initial observation operator matrix H (N_lisst x Ns)
-    Ns_aug = Ns # + Nflux + 4 
+    Ns_aug = Ns 
     H = zeros((N_lisst, Ns_aug))
     
     # Create volume-weighted observation operator matrix H
@@ -133,8 +109,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     end 
 
     # Volume-weighted observations 
-    dfL = CSV.read("/global/homes/s/siennaw/scratch/siennaw/scripts/enkf_sediment/lisst_data.csv", DataFrame)
-    dfR = CSV.read("/global/homes/s/siennaw/scratch/siennaw/scripts/enkf_sediment/lisst_variance.csv", DataFrame)
+    dfL = CSV.read("lisst_data.csv", DataFrame)
+    dfR = CSV.read("lisst_variance.csv", DataFrame)
 
     function get_observation_row(time_stamp::Real, df=dfL)
         # Thank you chatgpt for this function
