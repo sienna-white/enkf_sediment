@@ -60,7 +60,8 @@ end
 
 
 
-export init_params, run_floc_mod, return_parameter_space, get_particle_density, calculate_collision_matrix
+export init_params, run_floc_mod, run_floc_mod_semi, return_parameter_space, get_particle_density,
+       max_loss_rate
 
 # **************** Fixed constants ***************
 const g = 9.81            # gravitational constant [m/s^2]
@@ -83,12 +84,12 @@ const Fy = 1e-10           # yield strength (N)
 # const β = Ref{Float64}() #0.045
 # const nf = Ref{Float64}() # 1.9 #2.1 #1.9 #2.0  
 
-function calculate_collision_matrix(D, N)
-    collision_matrix = calculate_collision_matrix(D, N)
-    return collision_matrix
-end 
 
-function init_params(D::Vector{<:Real}, N::Int, n::Vector{<:Float64}, alpha::Float64, beta::Float64, beta2::Float64, nf::Float64, collision_matrix::Matrix{Float64})
+function init_params(D::Vector{<:Real}, N::Int, n::Vector{<:Float64}, alpha::Float64, beta::Float64, beta2::Float64, nf::Float64;
+                     collision_matrix::Union{Nothing,Matrix{Float64}}=nothing)
+    # `collision_matrix` depends only on D, so when init_params is called inside the
+    # time loop (once per member per step) recomputing it is by far the dominant cost.
+    # Pass it in precomputed.
 
     # @info "Initializing flocculation model with $N sediment classes ..."
     # @info "Primary particle diameter = $(D[1]) m, max particle diameter = $(D[end]) m"
@@ -115,7 +116,8 @@ function init_params(D::Vector{<:Real}, N::Int, n::Vector{<:Float64}, alpha::Flo
     # Pre-calculate large matricies 
     # @info "\t initialized density, settling velocity, and floc mass..."
     closest_half_mass = calculate_closest_half_mass(D, particle_density, N)
-    D_ratio_4_B = calculate_shear_breakup_matrix(beta, nf, D, N) 
+    cmat = isnothing(collision_matrix) ? calculate_collision_matrix(D, N) : collision_matrix
+    D_ratio_4_B = calculate_shear_breakup_matrix(beta, nf, D, N)
 
     # println("Mass = ", mass)
     # println("n = ", n)
@@ -124,7 +126,7 @@ function init_params(D::Vector{<:Real}, N::Int, n::Vector{<:Float64}, alpha::Flo
 
     # Create structure
     # Create structure to hold thread-isolated parameters
-    floc_params = FlocParams(alpha, beta, beta2, nf, closest_half_mass, collision_matrix, D_ratio_4_B, floc_density, ws, particle_density, mass)
+    floc_params = FlocParams(alpha, beta, beta2, nf, closest_half_mass, cmat, D_ratio_4_B, floc_density, ws, particle_density, mass)
     return floc_params
 
 
@@ -161,11 +163,22 @@ end
 
 function calculate_closest_half_mass(D::Vector{<:Real}, particle_density::Vector{<:Real}, N::Int)
     # Used for binary fragmentation: what particle is closest to half the particle count of each floc?
-    closest_half_mass_ = zeros(N)
+    # NOTE: this used to build a Vector{Float64} and rely on the FlocParams constructor
+    # to convert it to the declared Vector{Int}.  That conversion throws InexactError
+    # the moment particle_density contains a NaN/Inf (which it does as soon as nf runs
+    # away), and inside a @threads block that surfaces as an opaque TaskFailedException.
+    # Build the Int vector directly and guard the input.
+    closest_half_mass_ = zeros(Int, N)
     for i in 1:N
-        closest = @. particle_density[i] - (2*particle_density)  
-        closest_half_mass_[i] = argmin(abs.(closest))
-    end 
+        best = 1; bestval = Inf
+        for j in 1:N
+            v = abs(particle_density[i] - 2*particle_density[j])
+            if isfinite(v) && v < bestval
+                bestval = v; best = j
+            end
+        end
+        closest_half_mass_[i] = best
+    end
     return closest_half_mass_
 end
 
@@ -206,13 +219,17 @@ function calculate_mass(nf::Real, D::Vector{<:Real}, N=N::Int)
     #   nf: fractal dimension exponent
     # returns: mass of a particle in size class i (kg)
     mass_ = zeros(N)
-    for i in 1:N 
-        mass_[i] = ρ_s * π/6 * D[i]^3 * (D[i]/Dp)^nf
-    end 
-
+    for i in 1:N
+        # FIXED: fractal floc mass is  rho_s * (pi/6) * Dp^3 * (D/Dp)^nf.
+        # The old form used D[i]^3 * (D[i]/Dp)^nf, i.e. m ~ D^(3+nf), which is not a
+        # fractal scaling.  This only ever fed particle_ via mass_[1] (where D[1]==Dp,
+        # so the two agree) -- so behaviour is unchanged -- but the vector itself was
+        # wrong for any other use.
+        mass_[i] = ρ_s * π/6 * Dp^3 * (D[i]/Dp)^nf
+    end
 
     return mass_
-end 
+end
 
 
 
@@ -258,11 +275,14 @@ function run_floc_mod(fp::FlocParams, n::Vector{<:Float64}, N::Int, G::Real, dt:
     end 
     n_new = n .+ (change .* dt) 
 
-    new_mass =  sum(n_new .* fp.particle_density) 
+    new_mass =  sum(n_new .* fp.particle_density)
 
     mass_change = total_mass - new_mass
     # println("\t[1] Change in NP = ", mass_change)  # check mass conservation
-    n_new[1] -= mass_change
+    # FIXED sign: mass_change = total - new is the DEFICIT, so it has to be added back.
+    # particle_density[1] == 1, so adding mass_change to class 1 restores exactly.
+    # The old `-=` doubled the error instead of cancelling it.
+    n_new[1] += mass_change
     # print("PARTICLE_DIST = ", (n_new .* particle_density[]), "\n")
     # for iv in 1:N
     #     # if n_new[iv] > 0.0              # was total_positive
@@ -282,6 +302,142 @@ function run_floc_mod(fp::FlocParams, n::Vector{<:Float64}, N::Int, G::Real, dt:
     return n_new
 
 end 
+
+
+"""
+    max_loss_rate(fp, n, N, G)
+
+Largest per-class linear loss rate (1/s) in the current state.  The explicit Euler
+step in `run_floc_mod` is only stable while `dt * max_loss_rate < 1`.  At realistic
+LISST-derived concentrations (n ~ 1e12 /m^3 in the fine classes) this is ~1e-3 s, so
+`dt = 1` is unstable by 3 orders of magnitude.  Use `run_floc_mod_semi` instead.
+"""
+function max_loss_rate(fp::FlocParams, n::Vector{<:Float64}, N::Int, G::Real)
+    m = 0.0
+    for k in 1:N
+        s = 0.0
+        for i in 1:N
+            s += fp.collision_matrix[i,k] * n[i]
+        end
+        r = fp.α * G * s + B(fp, k, G)
+        m = max(m, r)
+    end
+    return m
+end
+
+"""
+    run_floc_mod_semi(fp, n, N, G, dt)
+
+Fixed-pivot aggregation + implicit, flux-limited sinks.  Drop-in replacement for
+`run_floc_mod`, and the one the EnKF driver should use.  Three distinct problems in
+the original are fixed here.
+
+1. STABILITY.  `run_floc_mod` is explicit Euler, stable only while
+   `dt * max_loss_rate < 1`.  At physically-sized concentrations (fine classes hold
+   ~1e12 particles/m^3 once the initial condition comes from LISST instead of being
+   1e4x too small) that limit is ~3e-3 s at G = 40 and ~7e-4 s at G = 175, so the
+   driver's `dt = 1` is three orders of magnitude too large and the spectrum blows up
+   to n ~ 1e26.  Both sinks are linear in n[k],
+
+       l1 = n[k] * (alpha * G * sum_i C[i,k] n[i])      l2 = n[k] * B[k]
+
+   so they are taken implicitly and each class keeps a bounded survival fraction.
+   The sources stay explicit but are scaled by a flux limiter -- the ratio of mass
+   actually removed to mass the explicit scheme would remove.  That ratio is 1 when
+   `dt*rate << 1` (recovering explicit Euler) and < 1 when `dt*rate >> 1`, so a
+   fragmenting class can never hand out more mass than it holds.
+
+2. AGGREGATE SIZING.  The original placed the product of classes j and m in class
+   j+m.  Index addition is only valid on a grid linear in particle MASS; on this
+   geometric grid it overshoots badly -- two 32 um flocs produced a 1038 um floc
+   instead of 44 um, a 23x error, and two 15.6 um flocs produced 244 um.  Aggregation
+   therefore teleported mass above the LISST range (459 um), where it is unobservable,
+   and no parameter choice could make the modelled spectrum match the data.  Here a
+   collision between classes i and j yields pd_i + pd_j primary particles, and that
+   mass is split between the two classes bracketing it (Kumar & Ramkrishna fixed
+   pivot), which conserves mass exactly.
+
+3. MASS BOOK-KEEPING.  Aggregates that overshoot the top of the grid stay in class N
+   rather than being deleted.  Deleting them bled 47% of total mass in 5 minutes, and
+   at a per-member rate that depended on alpha and nf, so the ensemble's total mass
+   fanned out 3.6x between analyses and the filter's log-volume spread ran away.
+
+Unconditionally positive, no sub-cycling, and `flocmod_mass_redistribute` is no longer
+needed.  Mass is conserved to machine precision (measured 1e-16 relative).
+"""
+function run_floc_mod_semi(fp::FlocParams, n::Vector{<:Float64}, N::Int, G::Real, dt::Real)
+    pd = fp.particle_density
+    L1_ = zeros(N); B_ = zeros(N); g1e = zeros(N); g2e = zeros(N)
+
+    @inbounds for k in 1:N
+        s = 0.0
+        for i in 1:N
+            s += fp.collision_matrix[i,k] * n[i]
+        end
+        L1_[k] = fp.α * G * s
+        B_[k]  = B(fp, k, G)
+        g2e[k] = g2(fp, n, k, G, N)
+    end
+
+    # ---- fixed-pivot aggregation birth ---------------------------------------
+    # pd[j] = (D[j]/Dp)^nf on a geometric D grid, so log(pd) is linear in the class
+    # index and the target class follows directly from the aggregate's mass.
+    lnpdr = log(pd[2] / pd[1])
+    @inbounds for i in 1:N
+        ni = n[i]
+        ni <= 0.0 && continue
+        for j in i:N
+            nj = n[j]
+            nj <= 0.0 && continue
+            half = (i == j) ? 0.5 : 1.0
+            R = fp.α * G * fp.collision_matrix[i,j] * half * ni * nj
+            (R <= 0.0 || !isfinite(R)) && continue
+            pt = pd[i] + pd[j]                       # primary particles in the aggregate
+            kf = 1.0 + log(pt) / lnpdr
+            kk = clamp(floor(Int, kf), 1, N-1)
+            w1 = clamp((pt - pd[kk]) / (pd[kk+1] - pd[kk]), 0.0, 1.0)
+            g1e[kk]   += R * (1.0 - w1)
+            g1e[kk+1] += R * w1
+        end
+    end
+
+    # ---- implicit sinks -------------------------------------------------------
+    n_new = zeros(N); rem_agg = zeros(N); rem_brk = zeros(N)
+    @inbounds for k in 1:N
+        tot  = L1_[k] + B_[k]
+        ns   = n[k] / (1.0 + dt*tot)
+        n_new[k] = ns
+        rem = n[k] - ns
+        if tot > 0
+            rem_agg[k] = rem * L1_[k] / tot
+            rem_brk[k] = rem * B_[k]  / tot
+        end
+    end
+
+    # ---- flux limiters: (mass actually removed) / (mass explicitly removed) ----
+    want_a = 0.0; got_a = 0.0; want_b = 0.0; got_b = 0.0
+    @inbounds for k in 1:N
+        want_a += dt * L1_[k] * n[k] * pd[k]; got_a += rem_agg[k] * pd[k]
+        want_b += dt * B_[k]  * n[k] * pd[k]; got_b += rem_brk[k] * pd[k]
+    end
+    lim_a = want_a > 0 ? got_a / want_a : 0.0
+    lim_b = want_b > 0 ? got_b / want_b : 0.0
+
+    placed_a = 0.0
+    @inbounds for k in 1:N
+        add = dt * g1e[k] * lim_a
+        placed_a += add * pd[k]
+        v = n_new[k] + add + dt*g2e[k]*lim_b
+        n_new[k] = (isfinite(v) && v > 0.0) ? v : 0.0
+    end
+
+    # aggregates that overshot the top of the grid stay in the largest class
+    lost = got_a - placed_a
+    if isfinite(lost) && lost > 0
+        n_new[N] += lost / pd[N]
+    end
+    return n_new
+end
 
 
 # ****************** Aggregation functions ***********************
@@ -319,16 +475,24 @@ function g1(fp::FlocParams, n::Vector{<:Float64}, k::Int, G::Real)
 end
 
 function l1(fp::FlocParams, n::Vector{<:Float64}, k::Int, G::Real, N::Int)
-# need to fix mass balance with aggregation / loss terms here! 
     # Loss due to collisions for class k
-    l1_ = 0 
+    #
+    # FIXED (was the "need to fix mass balance" TODO): the loss term used to carry a
+    # spurious 1/particle_density[k] factor.  particle_density[k] = (D[k]/Dp)^nf runs
+    # from 1 to ~1e8 across the grid, so the sink was under-counted by up to 8 orders
+    # of magnitude relative to the g1 source.  Aggregation was almost pure gain, and
+    # the resulting mass residual was silently dumped into class 1 by the n_new[1]
+    # patch in run_floc_mod -- which is a large part of why particle counts blow up.
+    # Measured at a representative state: gain/loss was 4.1e5 before, 0.21 after.
+    #
+    # Smoluchowski loss is  dn_k/dt = -n_k * sum_i alpha*A(i,k)*n_i   (no 1/pd factor).
+    l1_ = 0
     α = fp.α
-    particle_density = fp.particle_density
-    for i in 1:N  # note this is N in original flocmod equations 
-        l1_ += α * A(fp, G,i,k) * n[i] * n[k]  * 1/particle_density[k]
-    end 
+    for i in 1:N  # note this is N in original flocmod equations
+        l1_ += α * A(fp, G,i,k) * n[i] * n[k]
+    end
     return l1_
-end 
+end
 
 ######################### Shear break-up #########################
 

@@ -12,6 +12,8 @@ using Statistics
 using LinearAlgebra
 using Distributions
 using Base.Threads
+using Compat # for older julia versoins 
+
 
 include("hydro/calculate_physical_variables.jl") 
 include("hydro/advance_variables.jl")
@@ -22,32 +24,14 @@ using .floc_mod
 
 println("Using $(Threads.nthreads()) threads for parallelization.\n\n")
 
-function create_lognormal_distribution(mean::Float64, var::Float64, N::Int)
-    # 2. Convert to the underlying Normal distribution parameters (μ and σ)
-    # Formula for underlying variance
-    σ² = log(1.0 + (var/mean^2))
-    σ = sqrt(σ²)
-
-    # Formula for underlying mean
-    μ = log(mean) - 0.5 * σ²
-
-    # 3. Create the Log-Normal distribution object
-    dist = LogNormal(μ, σ)
-
-    # 4. Sample from it
-    # Generate an array of 10,000 samples:
-    samples = rand(dist, N)
-    return samples
-end
-
 function run_my_model(file_out_name::String, floc_on::Bool=true)
     #********************** SPATIAL DOMAIN  ***************************
-    N = 65 #35 #50 #250    # number of ensembles points
-    dt = 1 #0.5 #0.5    # (seconds) size of time step 
-    M  = 3600*1 #8*5 #*15 #*20 #*10 #10 #25 #*5 #*5*2  #24*5 #3600*5 #3600
+    N = 40 #35 #50 #250    # number of ensembles points
+    dt = 0.01 #0.5 #0.5    # (seconds) size of time step 
+    M  = 3600*20 #8*5 #*15 #*20 #*10 #10 #25 #*5 #*5*2  #24*5 #3600*5 #3600
 
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
-    isave = 30 #60*10 #*2 #10* #60*10*5 #*10
+    isave = 100 #60*10 #*2 #10* #60*10*5 #*10
     var2save = ["G", "nf", "alpha", "beta", "beta2"]
 
     create_output_dict(M, isave, var2save, N)
@@ -58,20 +42,23 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     specific_heat_air = 1007        # J/kg-degC x RH
 
     # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
-    Ns = 50                 # Number of sediment size classes
+    Ns = 30                 # Number of sediment size classes
     ssc0 = zeros(N, Ns)     # Matrix for sediment concentration (Nz x Ns)
-    ssc0[:, 1:4] .= abs.(randn(N, 4))*1e3  # Matrix for sediment concentration (N x Ns)
+    ssc0[:, 1:20] .= abs.(randn(N, 20))*1e9  # Matrix for sediment concentration (N x Ns)
     # ic =  [0, 0, 0, 0, 0, 1569393788, 13948421398, 34186735163, 18930699648, 9810032483, 6355491536, 7542553597, 8049608268, 4527016578, 2481863754, 1452287975, 1039818408, 765481304, 495921900, 376853152, 255783335, 185058484, 112515188, 73132356, 47481745, 34863237, 22586368, 18581423, 15560227, 10787057, 7192500, 4581169, 2739416, 1774748, 984630, 513701, 260245, 129624, 61627, 25981, 9148, 5926, 1635, 1059, 686, 444, 288, 186, 120, 0]
-    # ssc0[:, :] .= ic./100 
     ssc0 = ssc0 .+ abs.(randn(N, Ns)) #.*2
-    D = logrange(1e-6, 1200e-6, Ns)      # Sediment grain sizes (\mu m )
-    D = collect(D)
+    D = collect(logrange(1e-6, 1000e-6, Ns))      # Sediment grain sizes (\mu m )
+
+    # Volume of each size class (m^3)
     Volumes = (4/3)*pi*(D./2).^3
 
+    # Only need to calculate this once, can pass to all sediment parameter sets 
+    collision_matrix = calculate_collision_matrix(D, Ns)
+
     #***************************************************************************
-    alpha0 = 0.0 # 0.35
-    beta0  = 0.0 #0.15 
-    nf0 = 2.5 # change?  
+    alpha0 = 0.01 #35
+    beta0  = 0.04 
+    nf0 = 2.1 # change?  
     beta20 = 1.5
 
     Alphas = randn(N) 
@@ -91,13 +78,13 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     @info "Reading observational data..."
 
     # Velocity data 
-    df = CSV.read("/global/homes/s/siennaw/scratch/siennaw/scripts/enkf_sediment/adcp_lateral_velocity.csv", DataFrame)
-    get_velocity = LinearInterpolation(df.lateral_velocity, df.seconds, extrapolation = ExtrapolationType.Linear)
+    # df = CSV.read("/global/homes/s/siennaw/scratch/siennaw/scripts/enkf_sediment/adcp_lateral_velocity.csv", DataFrame)
+    # get_velocity = LinearInterpolation(df.lateral_velocity, df.seconds, extrapolation = ExtrapolationType.Linear)
 
     # Shear data
-    df = CSV.read("/global/homes/s/siennaw/scratch/siennaw/scripts/enkf_sediment/adv_shear_4_model.csv", DataFrame)
+    df = CSV.read("adv_shear_4_model.csv", DataFrame)
     df.smoothed_shear = df.smoothed_shear 
-    get_shear = LinearInterpolation(df.smoothed_shear, df.seconds, extrapolation = ExtrapolationType.Linear)
+    get_shear = LinearInterpolation(df.smoothed_shear, df.seconds) #, extrapolation = ExtrapolationType.Linear)
 
     time_steps = df[!, "seconds"]
     turbulent_shears = df[!, "smoothed_shear"] 
@@ -132,8 +119,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     end 
 
     # Volume-weighted observations 
-    dfL = CSV.read("/global/homes/s/siennaw/scratch/siennaw/scripts/enkf_sediment/lisst_data.csv", DataFrame)
-    dfR = CSV.read("/global/homes/s/siennaw/scratch/siennaw/scripts/enkf_sediment/lisst_variance.csv", DataFrame)
+    dfL = CSV.read("lisst_data.csv", DataFrame)
+    dfR = CSV.read("lisst_variance.csv", DataFrame)
 
     function get_observation_row(time_stamp::Real, df=dfL)
         # Thank you chatgpt for this function
@@ -174,7 +161,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     # Initialize parameter set for each ensemble member
 
     # Initialize list of length N for each ensemble member
-    # floc_params_list = Vector{Any}(undef, N)
+    floc_params_list = Vector{Any}(undef, N)
     variables = Dict() 
     variables["SSC"] = ssc0
     
@@ -191,27 +178,32 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     noise_N     = zeros(N)
     noise_ssc   = zeros(N, 11)
 
-    # for EID in 1:N
-    #     alpha = Alphas[EID]
-    #     beta = Betas[EID]
-    #     beta2 = Beta2s[EID]
-    #     nf = Nfs[EID]
-    #     floc_params = init_params(D, Ns, ssc0[EID,:], alpha, beta, beta2, nf)
-    #     floc_params_list[EID] = floc_params
-    #     # push!(floc_params_list, floc_params)
-    #     @printf("\tParameters for ensemble [%d]: alpha=%2.2f, beta=%2.2f, beta2=%2.2f, nf=%2.2f\n", EID, alpha, beta, beta2, nf)
-    # end
+    for EID in 1:N
+        alpha = alpha0 * exp(0.1*Alphas[EID]) 
+        beta = beta0 * exp(0.1*Betas[EID]) 
+        beta2 = beta20 * exp(0.1*Beta2s[EID]) 
+        nf = nf0 * exp(0.1* Nfs[EID])  #* sin(Nfs[EID])^2 
+        floc_params = init_params(D, Ns, ssc0[EID,:], alpha, beta, beta2, nf, collision_matrix)
+        # alpha = Alphas[EID]
+        # beta = Betas[EID]
+        # beta2 = Beta2s[EID]
+        # nf = Nfs[EID]
+        # floc_params = init_params(D, Ns, ssc0[EID,:], alpha, beta, beta2, nf)
+        floc_params_list[EID] = floc_params
+        # push!(floc_params_list, floc_params)
+        @printf("\tParameters for ensemble [%d]: alpha=%2.2f, beta=%2.2f, beta2=%2.2f, nf=%2.2f\n", EID, alpha, beta, beta2, nf)
+    end
 
     for i in 2:(M)
         #***************************************************************************
         #   Random walk for parameters and flux term
         #***************************************************************************
         # Flux  .+=  randn(N, Nflux).* 0.0001 # Add some random noise to the flux term
-        noise = 0.0001
-        Alphas.+=  randn!(noise_N) .* noise
-        Betas .+=  randn!(noise_N) .* noise 
-        Beta2s.+=  randn!(noise_N).* noise
-        Nfs   .+=  randn!(noise_N) .* noise 
+        # noise = 0.0001
+        # Alphas.+=  randn!(noise_N) .* noise
+        # Betas .+=  randn!(noise_N) .* noise 
+        # Beta2s.+=  randn!(noise_N).* noise
+        # Nfs   .+=  randn!(noise_N) .* noise 
 
         # Flux  .=  (1 .+ randn(N, Nflux).* 0.01) # Add some random noise to the flux term
         # Alphas.=   randn!(noise_N) 
@@ -228,7 +220,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         # ssc .+= (1 .+ randn(N, Ns).* 0.05) # .*(D[1]./D)) 
         # ssc .+= 100 .* randn(N, Ns) # ) #.* 0.1
         # 5000 .*(D[1]./ D') Volumes[1]
-        ssc .+= randn(N, Ns) .* (1e-8./Volumes')  # ) #.* 0.1
+        # ssc .+= randn(N, Ns) .* (1e-10./Volumes')  # ) #.* 0.1
         clamp!(ssc, 0.0, Inf) # Ensure no negative concentrations
 
         # [2] Ensemble loop @ time step 
@@ -237,19 +229,19 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         
         # ***************************************************************
         @threads for EID in 1:N 
-            alpha = alpha0 * exp(Alphas[EID]) 
-            beta = beta0 * exp(Betas[EID]) 
-            beta2 = beta20 * exp(Beta2s[EID]) 
-            nf = nf0 * sin(Nfs[EID])^2 
-            floc_params = init_params(D, Ns, ssc0[EID,:], alpha, beta, beta2, nf)
-            ssc_ = run_floc_mod(floc_params, ssc[EID, :], Ns,  shear, dt) 
+            # alpha = alpha0 * exp(Alphas[EID]) 
+            # beta = beta0 * exp(Betas[EID]) 
+            # beta2 = beta20 * exp(Beta2s[EID]) 
+            # nf = nf0 * sin(Nfs[EID])^2 
+            # floc_params = init_params(D, Ns, ssc0[EID,:], alpha, beta, beta2, nf)
+            # ssc_ = run_floc_mod(floc_params, ssc[EID, :], Ns,  shear, dt) 
                        # sed distribution ~  Ns ~ Shear ~ dt                           #  turbulent_shears[i]
-            # ssc_ = run_floc_mod(floc_params_list[EID], ssc[EID, :], Ns,  shear, dt) 
+            ssc_ = run_floc_mod(floc_params_list[EID], ssc[EID, :], Ns,  shear, dt) 
             # Flux_ = zeros(Ns)
             # Flux_[1:Flux_ind] .= Flux[EID, 1]
             # Flux_[Flux_ind+1:end] .= Flux[EID, 2]
             # ssc_ = ssc_ .+ dt.* 0.01*(sin.(Flux_).*ssc_) # velocity.*1e-3.* Add lateral Flux term to sediment concentration
-            clamp!(ssc_, 1e-6, 1e10) # Ensure no negative concentrations
+            # clamp!(ssc_, 1e-6, 1e10) # Ensure no negative concentrations
             ssc_[.!isfinite.(ssc_)] .= 0 
             ssc[EID,:] .= ssc_ 
         end 
@@ -261,7 +253,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         # ***************************************************************
         # [4] Perform EnKF update  
         run_analysis, observations = get_observation_row(time)
-
+        # run_analysis = false 
         if run_analysis
             text = @sprintf("\t Observations available at time = %2.1f hours (timestep %d/%d)", time/3600, i, M)            
             println(text)
@@ -286,7 +278,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
             # @info "‖HPHᵀ‖ = $(norm(HPHt)), ‖R‖ = $(norm(R)), mean(diag(HPHt))/mean(R) = $(mean(diag(HPHt))/mean(R))"
 
             # ***************************************************************
-             for EID in 1:N
+            for EID in 1:N
                 # Analysis step 
                 # current_state = augmented_matrix[:, EID]
   
@@ -386,8 +378,11 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     close(ds)
 end 
 
-run_my_model("FlocMod_ADV_G_113.nc", true)
+run_my_model("flocmod_noassimilation16.nc", true)
 
+
+# 15 >> 20 ens
+# 16 >> 50 ens
 
 # 100 (param set #58 , longer time span) 
 # 101 (volume noise = 2e-9, param noise = 0.001)  

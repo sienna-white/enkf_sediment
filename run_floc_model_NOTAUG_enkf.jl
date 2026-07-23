@@ -27,8 +27,8 @@ println("Using $(Threads.nthreads()) threads for parallelization.\n\n")
 function run_my_model(file_out_name::String, floc_on::Bool=true)
     #********************** SPATIAL DOMAIN  ***************************
     N = 100 #65 #35 #50 #250    # number of ensembles points
-    dt = 1 #0.5 #0.5    # (seconds) size of time step 
-    M = 3600   #24*5 #3600*5 #3600
+    dt = 0.01 #0.5 #0.5    # (seconds) size of time step 
+    M = 3600*20   #24*5 #3600*5 #3600
 
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
     isave = 30 #*2 #10* #60*10*5 #*10
@@ -97,12 +97,12 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         for i in 1:N_lisst
             if ((D[j]*1e6) <= Ds_LISST[i])
                 @debug "-> placing in LISST size class: ", Ds_LISST[i]
-                H[i, j] = 1 #  Volumes[j]*1e6
+                H[i, j] = Volumes[j]*1e6
                 break
             end 
             if i==N_lisst
                 @debug "Larger than max(LISST) -> placing in LISST size class: ", Ds_LISST[i]
-                H[i, j] = 1 # Volumes[j]*1e6
+                H[i, j] = Volumes[j]*1e6
                 break
             end 
         end
@@ -165,9 +165,9 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         @printf("\tParameters for ensemble [%d]: alpha=%2.2f, beta=%2.2f, beta2=%2.2f, nf=%2.2f\n", EID, alpha, beta, beta2, nf)
     end
 
+     # ***************************************************************
     for i in 2:(M)
         time = Times[i];
-        # ***************************************************************
         # [1] Advance sediment concentrations for each size class
         ssc = variables["SSC"]
         # svol = similar(ssc)
@@ -272,10 +272,11 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     close(ds)
 end 
 
-run_my_model("FlocMod_NORMAL_1.nc", true)
+run_my_model("FlocMod_NORMAL_5.nc", true)
 
 
 
+# > this looks best:         ssc .+= randn(N, Ns).* (1e-8./Volumes')
 
 
 
