@@ -237,7 +237,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
             beta = beta0 * exp(0.1*Betas[EID]) 
             beta2 = beta20 * exp(0.1*Beta2s[EID]) 
             nf = nf0 * exp(0.1*Nfs[EID]) 
-            floc_params = init_params(D, Ns, ssc[EID,:], alpha, beta, beta2, nf, collision_matrix)
+            floc_params = init_params(D, Ns, ssc0[EID,:], alpha, beta, beta2, nf, collision_matrix)
             ssc_ = run_floc_mod(floc_params, ssc[EID, :], Ns,  shear, dt) 
                        # sed distribution ~  Ns ~ Shear ~ dt                           #  turbulent_shears[i]
             # ssc_ = run_floc_mod(floc_params_list[EID], ssc[EID, :], Ns,  shear, dt) 
@@ -381,7 +381,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     close(ds)
 end 
 
-run_my_model("flocmod_41.nc", true)
+run_my_model("flocmod_40.nc", true)
 
 # 16 > long run
 # 17 > updated the initial condition 
@@ -406,8 +406,6 @@ run_my_model("flocmod_41.nc", true)
 # 38 <-> 37
 # 39 <-> 36 
 # 40 <-> 34 
-
-# 41 > oops initializing w/ wrong number of sediment 
 
 
 

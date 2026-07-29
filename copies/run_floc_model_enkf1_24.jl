@@ -25,12 +25,12 @@ println("Using $(Threads.nthreads()) threads for parallelization.\n\n")
 
 function run_my_model(file_out_name::String, floc_on::Bool=true)
     #********************** SPATIAL DOMAIN  ***************************
-    N = 80 #35 #50 #250    # number of ensembles points
+    N = 60 #35 #50 #250    # number of ensembles points
     dt = 0.05 #0.5 #0.5    # (seconds) size of time step 
     # M  = 3600*9 #*300 #0 #8*5 #*15 #*20 #*10 #10 #25 #*5 #*5*2  #24*5 #3600*5 #3600
-    M = 72000*24*12 # 15 hours @ dt = 0.05
+    M = 72000*8 # 15 hours @ dt = 0.05
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
-    isave = 6000 #1200*2 #600 #2400 # every 2 min  #60*10 #*2 #10* #60*10*5 #*10
+    isave = 1200*2 #600 #2400 # every 2 min  #60*10 #*2 #10* #60*10*5 #*10
     var2save = ["G", "nf", "alpha", "beta", "beta2"]
 
     create_output_dict(M, isave, var2save, N)
@@ -41,18 +41,18 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     specific_heat_air = 1007        # J/kg-degC x RH
 
     # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
-    Ns = 36 #40                 # Number of sediment size classes
+    Ns = 60 #36 #40                 # Number of sediment size classes
     ssc0 = zeros(N, Ns)     # Matrix for sediment concentration (Nz x Ns)
     ssc0[:, 1:10] .= abs.(randn(N, 10))*1e9  # Matrix for sediment concentration (N x Ns)
     # ic =  [0, 0, 0, 0, 0, 1569393788, 13948421398, 34186735163, 18930699648, 9810032483, 6355491536, 7542553597, 8049608268, 4527016578, 2481863754, 1452287975, 1039818408, 765481304, 495921900, 376853152, 255783335, 185058484, 112515188, 73132356, 47481745, 34863237, 22586368, 18581423, 15560227, 10787057, 7192500, 4581169, 2739416, 1774748, 984630, 513701, 260245, 129624, 61627, 25981, 9148, 5926, 1635, 1059, 686, 444, 288, 186, 120, 0]
     ssc0 = ssc0 .+ abs.(randn(N, Ns)) #.*2
-    # D = collect(logrange(1e-6, 1000e-6, Ns))      # Sediment grain sizes (\mu m )
+    D = collect(logrange(1e-6, 1200e-6, Ns))      # Sediment grain sizes (\mu m )
 
-    D  = [  1,   1.6 ,   1.89,  2.23 ,  2.63,  3.11,  3.67,   4.33,   5.11 ,  6.03,
-                  7.11,   8.39,   9.9,   11.7,   13.8,  16.3,  19.2,   22.7,   26.7,   31.6,
-                  37.2,   43.9,   51.9,  61.2,   72.2,  85.2,  101.,   119.,   140.,   165.,
-                  195.,   230.,   273.,  324.,   386.,  459.]
-    D = D .* 1e-6 # convert to meters
+    # D  = [  1,   1.6 ,   1.89,  2.23 ,  2.63,  3.11,  3.67,   4.33,   5.11 ,  6.03,
+    #               7.11,   8.39,   9.9,   11.7,   13.8,  16.3,  19.2,   22.7,   26.7,   31.6,
+    #               37.2,   43.9,   51.9,  61.2,   72.2,  85.2,  101.,   119.,   140.,   165.,
+    #               195.,   230.,   273.,  324.,   386.,  459.]
+    # D = D .* 1e-6 # convert to meters
 
     # Volume of each size class (m^3)
     Volumes = (4/3)*pi*(D./2).^3
@@ -224,7 +224,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
         # ssc .+= (1 .+ randn(N, Ns).* 0.05) # .*(D[1]./D)) 
         # ssc .+= 100 .* randn(N, Ns) # ) #.* 0.1
-        ssc .+= randn(N, Ns) .* (1e-14./Volumes')  # ) #.* 0.1
+        ssc .+= randn(N, Ns) .* (1e-15./Volumes')  # ) #.* 0.1
         clamp!(ssc, 0.0, Inf) # Ensure no negative concentrations
 
         # [2] Ensemble loop @ time step 
@@ -237,7 +237,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
             beta = beta0 * exp(0.1*Betas[EID]) 
             beta2 = beta20 * exp(0.1*Beta2s[EID]) 
             nf = nf0 * exp(0.1*Nfs[EID]) 
-            floc_params = init_params(D, Ns, ssc[EID,:], alpha, beta, beta2, nf, collision_matrix)
+            floc_params = init_params(D, Ns, ssc0[EID,:], alpha, beta, beta2, nf, collision_matrix)
             ssc_ = run_floc_mod(floc_params, ssc[EID, :], Ns,  shear, dt) 
                        # sed distribution ~  Ns ~ Shear ~ dt                           #  turbulent_shears[i]
             # ssc_ = run_floc_mod(floc_params_list[EID], ssc[EID, :], Ns,  shear, dt) 
@@ -381,7 +381,22 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     close(ds)
 end 
 
-run_my_model("flocmod_41.nc", true)
+run_my_model("flocmod_24.nc", true)
+
+# flocmod_3 >> increased beta
+# flocmod_4 >> increased beta + TURNED ON PARAMETER ASSIMILATION 
+# flocmod_5 >> increased beta + TURNED ON PARAMETER ASSIMILATION + NOISE
+# flocmod_6 >> dt = 0.05
+# ssc[ssc .* Volumes .> 10e-6] .
+# flocmod_7 >> dt = 0.05 + don't assimilate Beta2s
+# flocmod_8 :  >> running on savio 
+# flocmod_9 >> took out noise for parameters, fixed nf (was sin->exp)
+# flocmod_10 > noise back in for parameters
+# Floc11 > ds = 40 
+# Floc12 > reduce time step 
+# Floc13 > shear/10
+# Floc14 > comparison, no assimilation 
+# 15 : changed to have same diaemter classes as the LISST 
 
 # 16 > long run
 # 17 > updated the initial condition 
@@ -389,25 +404,17 @@ run_my_model("flocmod_41.nc", true)
 # 20 adding noise to state vector 
 # 21 shear no longer divided by 10 
 # 22 shear no longer divided by 10 + less noise for state 
-# 23 more ensembles >> best so far 
-# 25 >> N = 80 
-# 26 >> N = 80 // less nosie ? 
-# 27 is 26 but longer
-# 28 >> 25 w/ more nosie (1e-12)
-# 29 >> 1e-13 >> p good
+# 23 more ensembles
+# 24 F it lots of sedmient size classes 
 
-# 30 >> 1e-14 >> better ! liking this 
-# 31 >> 1e-14 + more noise for parameters (0.0002)
-# 32 >> longer  1e-14 + more noise for parameters (0.0002) >> AWESOME! 
-# 33 >> longer  1e-14 + more noise for parameters (0.0002) >> NF, Beta2 updated > bad 
-# 34 >> longer  1e-14 +  parameters (0.0001) 
-# 36 >> longer  1e-14 +  parameters (0.0002) , run 32 
-# 37 >> longer  1e-14 +  parameters (0.0003)
-# 38 <-> 37
-# 39 <-> 36 
-# 40 <-> 34 
 
-# 41 > oops initializing w/ wrong number of sediment 
+
+
+
+
+
+
+
 
 
 

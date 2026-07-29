@@ -17,10 +17,10 @@ using LinearAlgebra
 using Random
 
 fp="/global/homes/s/siennaw/scratch/siennaw/two_species/adjoint_phytoplankton/model_code"
-include("/global/homes/s/siennaw/scratch/siennaw/scripts/enkf_sediment/model_code/calculate_physical_variables.jl") 
-include("/global/homes/s/siennaw/scratch/siennaw/scripts/enkf_sediment/model_code/advance_variables.jl")
-include("/global/homes/s/siennaw/scratch/siennaw/scripts/enkf_sediment/model_code/phytoplankton.jl")
-include("/global/homes/s/siennaw/scratch/siennaw/scripts/enkf_sediment/model_code/forcings.jl") 
+include("old/model_code/calculate_physical_variables.jl") 
+include("old/model_code/advance_variables.jl")
+include("old/model_code/phytoplankton.jl")
+include("old/model_code/forcings.jl") 
 include("old/model_code/output.jl")
 include("old/model_code/define_params.jl")
 
@@ -40,12 +40,23 @@ time_index_vec = collect(1:M)
 
 file_out_name = "test1_sediment.nc"
 
-truth_dataset = NCDataset("ground_truth_sediment.nc")
+# truth_dataset = NCDataset("ground_truth_sediment.nc")
 
 forcing_folder = "/pscratch/sd/s/siennaw/stockton_field_data/forcing_for_model/2024/august6-28/"
 
 # Hydrodynamic dataset 
 # ds = NCDataset("/pscratch/sd/s/siennaw/two_species/adjoint_phytoplankton/run_hydro/HYDRO_AUGUST6-28.nc")
+
+
+######################################################################################################
+
+Calculate settling velocities for each size class
+ws = floc_params.ws
+for i in 1:Ns
+    println("\t Size class $i: ws = $(ws[i]*100) cm/s")
+    @printf("\t Size class %d, ws =  %2.2f cm/s\n", i, (ws[i_ens]*100))
+end
+
 
 # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
 isave = 1 
@@ -67,16 +78,16 @@ hr2s = 1/3600
 floc1 = Dict("d50" => 20e-6,             # mean diameter [m]
         "rho_sed" => 1001,          # specific density [kg/m^3]
         "ws" => 0.01,                # vertical velocity [m/s]
-        "name" => "sand")                #  name 
+        "name" => "floc1")                #  name 
 
 floc2 = Dict("d50" => 20e-6,             # mean diameter [m]
         "rho_sed" => 1001,          # specific density [kg/m^3]
-        "ws" => 5e-4,                # vertical velocity [m/s]
+        "ws" => 0.03,                # vertical velocity [m/s]
         "name" => "floc2")   
                 
 floc3 = Dict("d50" => 20e-6,             # mean diameter [m]
         "rho_sed" => 1001,          # specific density [kg/m^3]
-        "ws" => 8e-5,                # vertical velocity [m/s]
+        "ws" => 0.05,                # vertical velocity [m/s]
         "name" => "floc3")   
                 
 
@@ -85,12 +96,11 @@ floc3 = Dict("d50" => 20e-6,             # mean diameter [m]
 # Create dictionary to hold important discretization parameters
 discretization = Dict("beta" => (dt/dz^2), "dz" => dz, "dt" => dt, "N" => N, "z"=> z, "H" => H)
 
-
 N_ensemble = 500
 
 output = Dict()
 
-var2save = ["floc1","floc2", "floc3"]      # Only save growth + algae 
+var2save = ["floc1","floc2", "floc3"]     
 
 for var in var2save
     output[var] = zeros(Float64, N, M,  N_ensemble)
@@ -130,9 +140,7 @@ function run_forward_model(EID, it, time, Diffusivity, variables)
         #     growth2[j] = 1e-3
         # end
 
-        # # Split up loss + growth
-        # gamma1 = growth1 .- floc1["Li"]  # subtract the loss rate
-        # gamma2 = growth2 .- floc2["Li"]  # subtract the loss rate
+
         ws = floc1["ws"]  * abs(rand(0:4)) 
         variables["floc1"][:, EID] = advance_sediment(variables["floc1"][:, EID], Diffusivity, floc1, gamma1, discretization, ws)
         

@@ -30,7 +30,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     # M  = 3600*9 #*300 #0 #8*5 #*15 #*20 #*10 #10 #25 #*5 #*5*2  #24*5 #3600*5 #3600
     M = 72000*24*12 # 15 hours @ dt = 0.05
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
-    isave = 6000 #1200*2 #600 #2400 # every 2 min  #60*10 #*2 #10* #60*10*5 #*10
+    isave = 1200*2 #600 #2400 # every 2 min  #60*10 #*2 #10* #60*10*5 #*10
     var2save = ["G", "nf", "alpha", "beta", "beta2"]
 
     create_output_dict(M, isave, var2save, N)
@@ -204,7 +204,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         #   Random walk for parameters and flux term
         #***************************************************************************
         # Flux  .+=  randn(N, Nflux).* 0.0001 # Add some random noise to the flux term
-        noise = 0.0001
+        noise = 0.0003
         Alphas.+=  randn!(noise_N) .* noise
         Betas .+=  randn!(noise_N) .* noise 
         Beta2s.+=  randn!(noise_N).* noise
@@ -237,7 +237,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
             beta = beta0 * exp(0.1*Betas[EID]) 
             beta2 = beta20 * exp(0.1*Beta2s[EID]) 
             nf = nf0 * exp(0.1*Nfs[EID]) 
-            floc_params = init_params(D, Ns, ssc[EID,:], alpha, beta, beta2, nf, collision_matrix)
+            floc_params = init_params(D, Ns, ssc0[EID,:], alpha, beta, beta2, nf, collision_matrix)
             ssc_ = run_floc_mod(floc_params, ssc[EID, :], Ns,  shear, dt) 
                        # sed distribution ~  Ns ~ Shear ~ dt                           #  turbulent_shears[i]
             # ssc_ = run_floc_mod(floc_params_list[EID], ssc[EID, :], Ns,  shear, dt) 
@@ -381,7 +381,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     close(ds)
 end 
 
-run_my_model("flocmod_41.nc", true)
+run_my_model("flocmod_37.nc", true)
 
 # 16 > long run
 # 17 > updated the initial condition 
@@ -401,13 +401,7 @@ run_my_model("flocmod_41.nc", true)
 # 32 >> longer  1e-14 + more noise for parameters (0.0002) >> AWESOME! 
 # 33 >> longer  1e-14 + more noise for parameters (0.0002) >> NF, Beta2 updated > bad 
 # 34 >> longer  1e-14 +  parameters (0.0001) 
-# 36 >> longer  1e-14 +  parameters (0.0002) , run 32 
-# 37 >> longer  1e-14 +  parameters (0.0003)
-# 38 <-> 37
-# 39 <-> 36 
-# 40 <-> 34 
-
-# 41 > oops initializing w/ wrong number of sediment 
+# 36 >> longer  1e-14 +  parameters (0.0001) , run 32 
 
 
 

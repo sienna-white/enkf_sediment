@@ -20,6 +20,14 @@ function add_flux_to_output(Ns, isave, M, N, Nflux, output=output)
 end
 
 
+function add_sediments2_to_output(Ns, isave, M, N, output=output)
+    @info "Creating output structure to save sediment concentrations..."
+    n_saved_steps = div((M), isave)#- 1
+    output["ssc1"] = zeros(Float64, N, Ns, n_saved_steps)
+    output["ssc2"] = zeros(Float64, N, Ns, n_saved_steps)
+
+end
+
 function add_sediment_to_output(Ns, isave, M, N, output=output)
     @info "Creating output structure to save sediment concentrations..."
     n_saved_steps = div((M), isave)#- 1
@@ -27,7 +35,7 @@ function add_sediment_to_output(Ns, isave, M, N, output=output)
 end
 
 # ***********************************************************************
-function save_sediment2output_ens(Nens, index, ssc, output=output, var="ssc")
+function save_sediment2output_ens(Nens, index, ssc, var, output=output)
     output[var][Nens,  :, index] .= ssc
 end 
 
