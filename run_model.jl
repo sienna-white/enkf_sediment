@@ -240,7 +240,6 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     defDim(ds, "z", length(z)) 
     defDim(ds, "time", nt)
 
-    # println("Length of times_unique is ", size(t2))
     println("Length of SSC is ", size(output["ssc"]))
 
     defDim(ds, "Ds", length(D))

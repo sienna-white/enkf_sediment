@@ -26,10 +26,88 @@ include("old/model_code/define_params.jl")
 
 #********************** SPATIAL DOMAIN  ***************************
 N = 40   # number of grid points
+Nens = 40 
 H = 4   # depth (meters)
 dz = H/N # grid spacing - may need to adjust to reduce oscillations
 dt = 10 # (seconds) size of time step
 M = 360*3  #360*2 # number of time steps
+
+
+########
+ #********************** SPATIAL DOMAIN  ***************************
+ N = 100 #35 #50 #250    # number of ensembles points
+ dt = 0.05 #0.5 #0.5    # (seconds) size of time step 
+ M = 8640 #000 *5#72000*100 #*24*12 # 15 hours @ dt = 0.05
+ # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
+ isave = 300# 00 #6000 
+#  var2save = ["G", "alpha", "beta"]
+
+#  create_output_dict(M, isave, var2save, N)
+ #********************** FIXED CONSTANTS  ***************************
+ rhoW = 1000                     # Density of water, kg/m^3
+ specific_heat_water = 4181      # J/kg-degC
+ specific_heat_air = 1007        # J/kg-degC x RH
+
+ # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
+ Ns = 36 #40                 # Number of sediment size classes
+
+ ssc0 = zeros(N, Ns)     # Matrix for sediment concentration (Nz x Ns)
+ ssc0[:, 1:20] .= abs.(randn(N, 20))*1e10  # Matrix for sediment concentration (N x Ns)
+ ssc0 = ssc0 .+ abs.(randn(N, Ns)) 
+
+ # D = collect(logrange(1e-6, 1000e-6, Ns))      # Sediment grain sizes (\mu m )
+
+ D  = [  1,   1.6 ,   1.89,  2.23 ,  2.63,  3.11,  3.67,   4.33,   5.11 ,  6.03,
+               7.11,   8.39,   9.9,   11.7,   13.8,  16.3,  19.2,   22.7,   26.7,   31.6,
+               37.2,   43.9,   51.9,  61.2,   72.2,  85.2,  101.,   119.,   140.,   165.,
+               195.,   230.,   273.,  324.,   386.,  459.]
+ D = D .* 1e-6 # convert to meters
+
+ # Volume of each size class (m^3)
+ Volumes = (4/3)*pi*(D./2).^3
+
+ # Only need to calculate this once, can pass to all sediment parameter sets 
+ collision_matrix = calculate_collision_matrix(D, Ns)
+
+ #***************************************************************************
+#***************************************************************************
+alpha0 = 0.3 #35
+beta0  = 0.1
+nf0 = 2.1 # change?  
+beta20 = 1.5
+
+Alphas = randn(N) 
+Betas = randn(N)
+Nfs = randn(N)
+Beta2s = randn(N)
+
+for EID in 1:N
+    Alphas[EID] = alpha0 * exp(0.1*Alphas[EID]) 
+    Betas[EID] = beta0 * exp(0.1*Betas[EID]) 
+    Beta2s[EID] = beta20 * exp(0.1*Beta2s[EID]) 
+    Nfs[EID] = nf0 * exp(0.1* Nfs[EID])  
+end 
+
+variables = Dict() 
+variables["SSC1"] = ssc0
+variables["SSC2"] = ssc0
+
+floc_params_list = Vector{Any}(undef, Nens)
+ws_list = Vector{Any}(undef, Nens)
+variables = Dict() 
+variables["SSC1"] = ssc0
+variables["SSC2"] = ssc0
+
+for EID in 1:N
+    floc_params = init_params(D, Ns, ssc0[EID,:], Alphas[EID], Betas[EID], Beta2s[EID], Nfs[EID], collision_matrix)
+    floc_params_list[EID] = floc_params
+    ws_list[EID] = floc_params.ws
+    println("Ws is,", ws*100)
+end 
+
+
+ #***************************************************************************
+ add_sediment_to_output(Ns, isave, M, Nens)
 
 if M <= 0
     error("M must be greater than 0. Check istart and iend values.")
@@ -38,19 +116,69 @@ end
 # time_index_vec = collect(istart:(iend+1))
 time_index_vec = collect(1:M)
 
-file_out_name = "test1_sediment.nc"
+file_out_name = "floc_1D_model.nc"
 
-# truth_dataset = NCDataset("ground_truth_sediment.nc")
+# ---------------------------------------------------------------------------
+function interp_time(data::AbstractMatrix{<:Real}, t_data::AbstractVector{<:Real}, t_query::Real)
+    nt = length(t_data)
+    if t_query <= t_data[1]
+        return data[:, 1]
+    elseif t_query >= t_data[end]
+        return data[:, end]
+    end
+    j = clamp(searchsortedlast(t_data, t_query), 1, nt - 1)
+    t0, t1 = t_data[j], t_data[j + 1]
+    w = (t_query - t0) / (t1 - t0)
+    return @. (1 - w) * data[:, j] + w * data[:, j + 1]
+end
 
-forcing_folder = "/pscratch/sd/s/siennaw/stockton_field_data/forcing_for_model/2024/august6-28/"
+
 
 # Hydrodynamic dataset 
-# ds = NCDataset("/pscratch/sd/s/siennaw/two_species/adjoint_phytoplankton/run_hydro/HYDRO_AUGUST6-28.nc")
+# ds = NCDataset("hydro.nc")
+
+#********************** LOAD HYDRODYNAMIC FORCING FROM FILE ***************************
+# Hydrodynamics are no longer solved internally -- they're read from
+# hydro.nc (nominally 1 s resolution) and linearly interpolated onto this
+# model's (finer) dt time grid every substep.
+hydro_fn = "hydro.nc"
+hydro_vars = ["U", "Kq", "Nu", "C", "Kz", "L", "Q2", "Q2L", "N_BV2"]
+
+local t_hydro::Vector{Float64}
+local hydro_data::Dict{String, Matrix{Float64}}
+NCDataset(hydro_fn, "r") do hds
+    t_hydro = Float64.(Array(hds["time"]))  # seconds
+    if haskey(hds, "z")
+        z_hydro = Array(hds["z"])
+        if length(z_hydro) != N
+            error("hydro.nc has $(length(z_hydro)) depth levels but this run uses N=$N. " *
+                    "Vertical grids must match -- this script only interpolates in time, not space.")
+        end
+    end
+    missing_vars = filter(v -> !haskey(hds, v), hydro_vars)
+    if !isempty(missing_vars)
+        error("hydro.nc is missing expected hydrodynamic variable(s): $(join(missing_vars, ", "))")
+    end
+    hydro_data = Dict(v => Float64.(Array(hds[v])) for v in hydro_vars)  # each (z, time)
+end
+
+@info "Loaded hydrodynamic forcing from $hydro_fn: $(length(t_hydro)) timestamps " *
+        "spanning $(t_hydro[1])s to $(t_hydro[end])s"
+if total_duration_s > (t_hydro[end] - t_hydro[1])
+    @warn "Requested run duration ($(total_duration_s)s) exceeds the time span available " *
+            "in hydro.nc ($(t_hydro[end]-t_hydro[1])s). Timestamps beyond the file's range " *
+            "will be held fixed at the last available value."
+end
+
+function get_hydro_at(time::Real)
+    return Dict(v => interp_time(hydro_data[v], t_hydro, time) for v in hydro_vars)
+end
+#****************************************************************************************
 
 
 ######################################################################################################
 
-Calculate settling velocities for each size class
+# Calculate settling velocities for each size class
 ws = floc_params.ws
 for i in 1:Ns
     println("\t Size class $i: ws = $(ws[i]*100) cm/s")
@@ -131,14 +259,6 @@ global variables
 
 function run_forward_model(EID, it, time, Diffusivity, variables)
 
-        gamma1 = zeros(Float64, N)
-        gamma2 = zeros(Float64, N)
-
-        # Estimate source term 
-        # for j in 1:N 
-        #     growth1[j] = 1e-3
-        #     growth2[j] = 1e-3
-        # end
 
 
         ws = floc1["ws"]  * abs(rand(0:4)) 
@@ -156,39 +276,34 @@ function run_forward_model(EID, it, time, Diffusivity, variables)
         variables["floc2"][:, EID] = variables["floc2"][:, EID] .+ randn(Float64, (N))
         variables["floc3"][:, EID] = variables["floc3"][:, EID]  .+ randn(Float64, (N))
         return variables
-
 end
 
 
-observations = 120  #zeros(Float64, N)
-# observations[4] = 10 
+for i in 2:(M-1)
+    time = Times[i];
 
-# (10x10) (60x1)
-# H X 
-
-# H0 =  zeros(1, N)  # zeros(Float64, N, N)
-# H0[50] = 1
-# println("H0 = $H0")
-
-
-# For both flocs 
-H0 = zeros(1, N*3)  # zeros(Float64, N, N)
-x_index = N-10 
-H0[x_index] = 0.2   # floc1
-H0[N + x_index] = 0.5  # floc2
-H0[N*2 + x_index] = 0.3  # floc3
-println("observation inserted at z= $(z[x_index]) ")
-
-# R = 1 * 
-# Iterate through time 
-
-observed_values = @. time_index_vec/300 # sin(time_index_vec/100) * 100
-for i in 2:M
     index = time_index_vec[i]
-    time = index #Times[i];
+    time = index 
 
-    # Hydrodynamics
-    Diffusivity = zeros(N) .+ 1e-4 # ds["Kz"][:,index]
+    # [1]-[8] Hydrodynamic state is no longer solved internally -- every
+    # substep it's looked up from hydro.nc (1 s resolution) and linearly
+    # interpolated onto this model's dt time grid.
+    hydro_t = get_hydro_at(time)
+    U     = hydro_t["U"]
+    C     = hydro_t["C"]
+    N_BV2 = hydro_t["N_BV2"]
+    Q2    = hydro_t["Q2"]
+    Q2L   = hydro_t["Q2L"]
+    L     = hydro_t["L"]
+    nu_t  = hydro_t["Nu"]
+    Kq    = hydro_t["Kq"]
+    Kz    = hydro_t["Kz"]
+
+    # Turbulent shear driving the floc model -- computed exactly the same
+    # way as the original internal hydro solver did, so floc behavior is
+    # unaffected by this change.
+    turbulent_shear = (Q2 ./ Q2L) .* Q .* 100
+    turbulent_shear[end] = 0.1
 
     # println("On time $i")
 
@@ -203,53 +318,15 @@ for i in 2:M
         # println("floc1 = $(variables["floc1"][1:5, EID])")
     end
 
-    # Update step : BOTH FLOCS 
-    if i%60 == 0
-        println("Performing EnKF update at time step $i")
-        # EnKF step  
-
-        # Size : Nz x N_ensemble
-        total_sediment = zeros(Float64, N*3, N_ensemble)
-        total_sediment[1:N, :] = variables["floc1"]
-        total_sediment[N+1:2N, :] = variables["floc2"]
-        total_sediment[2N+1:end, :] = variables["floc3"]
-        println("total_sediment size = $(size(total_sediment))")    
-        # total_sediment = variables["floc1"] #.+ variables["floc2"]
-        ensemble_mean = mean(total_sediment, dims=2)    # Size : Nz x 1
-        R = 1e-3 #* Matrix(I, N, N)                         #c Size : Nz x Nz
-    
-        ensemble_covariance = cov(total_sediment, dims=2)  # Nz x Nz    
-        kalman_gain = ensemble_covariance * transpose(H0) * inv(H0 * ensemble_covariance * transpose(H0) .+ R)
-
-        for EID in 1:N_ensemble
-            current_state = zeros(Float64, N*3)
-            current_state[1:N] = variables["floc1"][:, EID]
-            current_state[N+1:2N] = variables["floc2"][:, EID]
-            current_state[2N+1:end] = variables["floc3"][:, EID]
-            shift = kalman_gain * (truth_dataset["observation"][i] .- H0 * current_state) 
-            variables["floc1"][:, EID] = variables["floc1"][:, EID] + shift[1:N]
-            variables["floc2"][:, EID] = variables["floc2"][:, EID] + shift[N+1:2N]
-            variables["floc3"][:, EID] = variables["floc3"][:, EID] + shift[2N+1:end]
-        end
+    if i % isave == 0
+        index = div(i, isave)
+        # save2output(index, "G", get_shear(time))
+        # save_sediment2output(index, ssc, "ssc")
+        save_sediment2output_ens(EID, index, ssc, "ssc")
+        push!(real_times_saved, time)
     end
 
-    # if i%50 == 0
-    #     println("Performing EnKF update at time step $i")
-    #     # EnKF step  
-        
-    #     # Size : Nz x N_ensemble
-    #     total_sediment = variables["floc1"] #.+ variables["floc2"]
-    #     ensemble_mean = mean(total_sediment, dims=2)    # Size : Nz x 1
-    #     R = 1e-3 #* Matrix(I, N, N)                         #c Size : Nz x Nz
-    
-    #     ensemble_covariance = cov(total_sediment, dims=2)  # Nz x Nz    
-    #     kalman_gain = ensemble_covariance * transpose(H0) * inv(H0 * ensemble_covariance * transpose(H0) .+ R)
 
-    #     for EID in 1:N_ensemble
-    #         shift = kalman_gain * (observations .- H0 * variables["floc1"][:, EID]) 
-    #         variables["floc1"][:, EID] = variables["floc1"][:, EID] + shift
-    #     end
-    # end
 end 
 
 

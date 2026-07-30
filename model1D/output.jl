@@ -1,0 +1,77 @@
+# Library to deal with model output 
+output = Dict()
+times = [] 
+
+# ***********************************************************************
+function create_output_dict(M::Int, isave::Int, Vars::Vector{<:String}, N::Int, output=output)
+    nvars = length(Vars)
+    n_saved_steps = div((M),isave) #+ 1 #- 1
+
+    for i = 1:nvars
+        output[Vars[i]] = zeros(Float64, N, n_saved_steps)
+    end
+end 
+# ***********************************************************************
+
+function add_flux_to_output(Ns, isave, M, N, Nflux, output=output)
+    @info "Creating output structure to save sediment concentrations..."
+    n_saved_steps = div((M), isave)#- 1
+    output["flux"] = zeros(Float64, N, Nflux, n_saved_steps)
+end
+
+
+function add_sediments2_to_output(Ns, isave, M, Nens, N, output=output)
+    @info "Creating output structure to save sediment concentrations..."
+    n_saved_steps = div((M), isave)#- 1
+    output["ssc1"] = zeros(Float64, Nens, N, Ns, n_saved_steps)
+    output["ssc2"] = zeros(Float64, Nens, N, Ns, n_saved_steps)
+
+end
+
+function add_sediment_to_output(Ns, isave, M, Nens, N, output=output)
+    @info "Creating output structure to save sediment concentrations..."
+    n_saved_steps = div((M), isave)#- 1
+    output["ssc"] = zeros(Float64, Nens, N, Ns, n_saved_steps)
+end
+
+# ***********************************************************************
+function save_sediment2output_ens(Nens, index, ssc, var, output=output)
+    output[var][Nens, :, :, index] .= ssc
+end 
+
+
+
+
+function save_sediment2output(index, ssc, var="ssc", output=output)
+    # print("Saving $varname at time $time")
+    output[var][:, :, :, index] .= ssc
+    # push!(times, time)
+end 
+
+# ***********************************************************************
+function save2output_ens(Nens, index, varname, value, output=output)
+    # print("Saving $varname at time $time")
+    output[varname][Nens,index] = value
+    # push!(times, time)
+end 
+
+# ***********************************************************************
+function save2output(index, varname, value, output=output)
+    # print("Saving $varname at time $time")
+    output[varname][:,index] .= value
+    # push!(times, time)
+end 
+# ***********************************************************************
+
+function plot_variable(varname, discretization, output=output)
+    ntimes = length(unique(times))
+    print(output)
+    print("Plotting $(ntimes) steps")
+    z = discretization["z"]
+    p = plot() 
+
+    for i in 1:(ntimes-1)
+        plot!( output[varname][:,i], -z) # label="t = $(times[i])")
+    end
+   display(p) # plot(times, output[varname][1,:])
+end

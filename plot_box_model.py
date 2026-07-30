@@ -2,13 +2,17 @@ import xarray as xr
 import numpy as np 
 import matplotlib.pyplot as plt 
 import pandas as pd 
+import cmocean as cmo
 
-print("TEST?")
-ds = xr.open_dataset("box_model4.nc", decode_times=False)
+
+n = 18
+
+print("running script ...")
+ds = xr.open_dataset("box_model%d.nc" % n, decode_times=False)
 print("opened dataset...")
 print(ds)
 date = pd.to_datetime("2020-07-16 20:10:01")
-# ds = ds.dropna(dim="N", how="any")
+ds = ds.dropna(dim="N", how="any")
 mtime = [date + pd.Timedelta(t, unit='s') for t in ds.time.values]
 nt = len(ds.time) 
 Nens = len(ds.N)
@@ -40,7 +44,6 @@ def calculate_mass(nf, D, N):
     for i in range(N):
         density_[i] = rho_w + (rho_s - rho_w) * (Dp/D[i])**(nf - 3)
      
-
     mass_ = np.zeros(N)
     for i in range(N): 
         mass_[i] = rho_s * np.pi/6 * Dp**3 * (D[i]/Dp)**nf
@@ -50,40 +53,50 @@ def calculate_mass(nf, D, N):
     for i in range(N): 
         mass_s[i] = rho_s * np.pi/6 * D[i]**(3-nf) * (Dp/D[i])**nf
 
-
-
     ws_ = np.zeros(N)
     for i in range(N):
         ws_[i] = g/(18*nu) * (density_[i] - rho_w)/(rho_w) * D[i]**2 
      
     return mass_, mass_s, ws_, density_
 
-dsm = ds.mean(dim="N")
 D = ds.Ds
-nf = dsm.nf.isel(time=0) 
-nf = 0
+
 nf0 = 2.1
-nf = nf0 * np.exp(0.1*nf) 
-ssc = dsm.ssc1.isel(time=0)
-
-mass, mass_s, ws, density = calculate_mass(nf, D, 36)
-
-print(mass)
-
+# ssc = dsm.ssc1.isel(time=0)
 
 print(ds)
-fig = plt.figure()
-ax = plt.gca() 
+fig, axs = plt.subplots(nrows=2, ncols=1)
 
 for i in range(0, Nens):
+    nf = ds.nf.isel(N=i)
+    nf = nf0 * np.exp(0.1*nf) 
+    color = cmo.cm.haline(i/Nens)
+
+    mass, mass_s, ws, density = calculate_mass(nf, D, Ns)
+
     s1 = ds.ssc1.isel(N=i) 
     s1 = np.nansum(s1 * mass, axis=1) * 1e6
-    print(s1)
-    ax.plot(ds.time, s1, '-o')
+    s1[s1>50] = np.nan
+    print("shoal:", s1)
+
+    axs[0].plot(mtime, s1, '-o', color=color)
 
     s1 = ds.ssc2.isel(N=i) 
     s1 = np.nansum(s1 * mass, axis=1) * 1e6
-    ax.plot(ds.time, s1, '-.')
+    s1[s1>50] = np.nan
+    print("channel:", s1)
+    axs[1].set_title("Channel")
+    axs[0].set_title("Shoal")
 
-ax.set_ylabel("SSC [mg/L]")
-fig.savefig("TEST.png")
+    label = "Nf = %2.1f, beta=%2.1f , alpha=%2.1f" % (ds.nf.isel(N=i), ds.beta.isel(N=i), ds.alpha.isel(N=i))
+    axs[1].plot(mtime, s1, '-', color=color, label=label)
+
+for ax in axs:
+    ax.legend()
+    ax.set_ylim(0, 140)
+    ax.grid(alpha=0.2)
+    ax.set_ylabel("SSC [mg/L]")
+
+
+plt.tight_layout() 
+fig.savefig("TEST%d.png" % n)

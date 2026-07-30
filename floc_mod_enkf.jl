@@ -60,7 +60,7 @@ end
 
 
 
-export init_params, run_floc_mod, return_parameter_space, get_particle_density, calculate_collision_matrix
+export init_params, run_floc_mod, return_parameter_space, get_particle_density, calculate_collision_matrix, run_floc_mod_gamma
 
 # **************** Fixed constants ***************
 const g = 9.81            # gravitational constant [m/s^2]
@@ -219,10 +219,42 @@ end
 
 # ******************** Flocculation functions ************************
 
-# function return_parameter_space()
-#     # Returns a string of the parameter space for the current flocculation model parameters.
-#     return nf, α, β, β_2 #, β_3
-# end 
+
+function run_floc_mod_gamma(fp::FlocParams, n::Vector{<:Float64}, N::Int, G::Real, dt::Real)
+    # println("[1] Initial number of primary particles = ", sum(n .* particle_density[]))  # check mass conservation
+
+    g1_ = zeros(N)
+    l1_ = zeros(N)
+    g2_ = zeros(N)
+    l2_ = zeros(N)
+
+    total_mass = sum(fp.particle_density .* n)
+    # println("Total mass = ", total_mass[])  # check mass conservation
+    # print("[0] n = ", n, "\n")
+    for k in 1:N
+        g1_[k] = g1(fp, n, k, G)
+        l1_[k] = l1(fp, n, k, G, N)
+        g2_[k] = g2(fp, n, k, G, N)
+        l2_[k] = l2(fp, n, k, G)
+    end 
+
+    change = zeros(N)
+    for i in 1:N
+      #          agg (+)  agg(-)  shear(+)   shear(-)
+        change[i]  =  g1_[i]   - l1_[i]  + g2_[i]  - l2_[i]
+    end 
+    n_new = n .+ (change .* dt) 
+
+    new_mass =  sum(n_new .* fp.particle_density) 
+
+    mass_change = total_mass - new_mass
+    n_new[1] -= mass_change
+    n_new = flocmod_mass_redistribute(fp, n_new, N) 
+    gamma_dt = n_new - n
+    return gamma_dt
+
+end 
+
 
 function run_floc_mod(fp::FlocParams, n::Vector{<:Float64}, N::Int, G::Real, dt::Real)
     # println("[1] Initial number of primary particles = ", sum(n .* particle_density[]))  # check mass conservation
@@ -325,7 +357,7 @@ function l1(fp::FlocParams, n::Vector{<:Float64}, k::Int, G::Real, N::Int)
     α = fp.α
     particle_density = fp.particle_density
     for i in 1:N  # note this is N in original flocmod equations 
-        l1_ += α * A(fp, G,i,k) * n[i] * n[k]  * 1/particle_density[k]
+        l1_ += α * A(fp, G,i,k) * n[i] * n[k] # * 1/particle_density[k]
     end 
     return l1_
 end 
