@@ -39,7 +39,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     H = 4    # depth (meters)
     dz = H/N  # grid spacing - may need to adjust to reduce oscillations
     dt = 5    # (seconds) size of time step 
-    M  = 3600*24*7 #24 #3600
+    M  = 3600*24 #*7 #24 #3600
 
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
     isave = 40 # 6 #1000
@@ -48,7 +48,9 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     create_output_dict(M, isave, var2save, N)
 
     # Create depth vector 
-    z = collect(H:-dz:dz) .- dz/2 # depth vector
+    # z = 
+    # z = collect(H:-dz:dz) .- dz/2 # depth vector
+    z = collect(dz:dz:H) .- dz/2 
 
     #********************** FIXED CONSTANTS  ***************************
     rhoA = 1.23                     # Density of air, kg/m^3
@@ -216,5 +218,5 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 end 
 
 # file_out_name = @sprintf("hydro.nc") 
-run_my_model("hydro.nc", true)
+run_my_model("hydro_newZ.nc", true)
 

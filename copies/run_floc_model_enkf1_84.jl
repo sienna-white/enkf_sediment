@@ -26,11 +26,9 @@ println("Using $(Threads.nthreads()) threads for parallelization.\n\n")
 function run_my_model(file_out_name::String, floc_on::Bool=true)
     #********************** SPATIAL DOMAIN  ***************************
     N = 100 #35 #50 #250    # number of ensembles points
-    dt = 0.01 #0.5 #0.5    # (seconds) size of time step 
+    dt = 0.05 #0.5 #0.5    # (seconds) size of time step 
     # M  = 3600*9 #*300 #0 #8*5 #*15 #*20 #*10 #10 #25 #*5 #*5*2  #24*5 #3600*5 #3600
-
-    M = 8640000*5 #360000 * 18
-    # M = 864000*5 #8640000 #*2#72000*100 #*24*12 # 15 hours @ dt = 0.05
+    M = 8640000 #*2#72000*100 #*24*12 # 15 hours @ dt = 0.05
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
     isave = 30000 #6000 #1200*2 #600 #2400 # every 2 min  #60*10 #*2 #10* #60*10*5 #*10
     var2save = ["G", "alpha", "beta"]
@@ -185,7 +183,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     augmented_matrix = zeros(Ns_aug, N)  # Pre-allocate array 
     # noise_Nflux = zeros(N, Nflux) 
     noise_N     = zeros(N)
-    noise_ssc   = zeros(N, Ns)
+    noise_ssc   = zeros(N, 11)
+
     # for EID in 1:N
     #     alpha = alpha0 * exp(0.1*Alphas[EID]) 
     #     beta = beta0 * exp(0.1*Betas[EID]) 
@@ -201,7 +200,6 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     #     # push!(floc_params_list, floc_params)
     #     @printf("\tParameters for ensemble [%d]: alpha=%2.2f, beta=%2.2f, beta2=%2.2f, nf=%2.2f\n", EID, alpha, beta, beta2, nf)
     # end
-    VOLUME_NOISE = (1e-8./Volumes')
 
     for i in 2:(M)
         #***************************************************************************
@@ -224,8 +222,9 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         # ***************************************************************
         # [1] Advance sediment concentrations for each size class
         ssc = variables["SSC"]
+        # ssc += abs.(randn(N, Ns)) 
 
-        ssc .+= randn!(noise_ssc) .*  VOLUME_NOISE
+        ssc .+= randn(N, Ns) .* (1e-7./Volumes')  # ) #.* 0.1
         clamp!(ssc, 0.0, Inf) # Ensure no negative concentrations
 
         # [2] Ensemble loop @ time step 
@@ -258,8 +257,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
         # ***************************************************************
         # [4] Perform EnKF update  
-        # run_analysis, observations = get_observation_row(time)
-        run_analysis = false 
+        run_analysis, observations = get_observation_row(time)
+        # run_analysis = false 
         if run_analysis
             text = @sprintf("\t Observations available at time = %2.1f hours (timestep %d/%d)", time/3600, i, M)            
             println(text)
@@ -283,7 +282,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
             # @info "‖HPHᵀ‖ = $(norm(HPHt)), ‖R‖ = $(norm(R)), mean(diag(HPHt))/mean(R) = $(mean(diag(HPHt))/mean(R))"
             flush(stdout)
             # ***************************************************************
-            @threads for EID in 1:N
+            for EID in 1:N
                 # Analysis step 
                 # current_state = augmented_matrix[:, EID]
                 innovation = (observations .- H * augmented_matrix[:, EID])
@@ -388,14 +387,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     close(ds)
 end 
 
-run_my_model("flocmod_108_NOASSIM.nc", true)
-# 71 but longer
-
-# 101 >> trying out perturbed obs  [ voloume nosie to 1e-7 ]
-# 102 >> trying out perturbed obs  [ voloume nosie to 1e-10 ]
-# 103 >> trying out perturbed obs  [ voloume nosie to 1e-14 ]
-
-
+run_my_model("flocmod_84.nc", true)
 
 # 70  >> more ens, dt=0.01, voloume nosie to 1e-7
 # 71 >> more ens, dt=0.01, voloume nosie to 1e-8

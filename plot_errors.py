@@ -15,9 +15,7 @@ directory = "/global/scratch/users/siennaw/scripts/enkf_sediment"
 
 
 
-if 1 : 
-
-
+if 1: 
     csv_files = [
         os.path.join('metrics/', f) 
         for f in os.listdir('metrics/') 
@@ -29,14 +27,34 @@ if 1 :
     for fn in csv_files:
         df = pd.read_csv(fn)
         df = df.dropna(how='any')
-        ax.plot(df.rmse, '-', label=fn, linewidth=2, alpha=0.8) 
+        
+        t = df['Unnamed: 0']
+
+        ax.plot(t/3600, df.rmse, 'o', label=fn, linewidth=2, alpha=0.8) 
 
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
     ax.set_ylim(0, 25)
-    ax.set_xlim(0, 200 ) #4000)
+    # ax.set_xlim(0, 200 ) #4000)
     ax.grid(alpha=0.2)
     plt.tight_layout() 
     fig.savefig('errors.png')
+
+    fig = plt.figure(figsize=(11,6))
+    ax = plt.gca()
+    for fn in csv_files:
+        df = pd.read_csv(fn)
+        df = df.dropna(how='any')
+        t = df['Unnamed: 0']
+        print(fn)
+        print("MEDIAN SKILL IS %2.3f" % np.median(df.skill.values))
+        ax.plot(t/3600, df.skill, 'o', label=fn, linewidth=2, alpha=0.8) 
+
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+    ax.set_ylim(-1, 1)
+    # ax.set_xlim(0, 200 ) #4000)
+    ax.grid(alpha=0.2)
+    plt.tight_layout() 
+    fig.savefig('skill.png')
 
 nc_files = [ f
     for f in os.listdir(directory) 
@@ -44,30 +62,38 @@ nc_files = [ f
 ]
 
 
-if 0 : 
+if 0: 
 
     fns = nc_files #["flocmod_38.nc", "flocmod_39.nc", "flocmod_40.nc"]
 
 
+    fns = [
+        f for f in os.listdir('/global/scratch/users/siennaw/scripts/enkf_sediment/') 
+        if f.endswith(".nc")
+    ]
 
+
+
+
+    lstdata= pd.read_csv("lisst_data.csv")
+    seconds = lstdata['seconds'].values
+    size_classes = lstdata.columns[1:]
+
+    print(fns)
     for fn in fns: 
         print(fn)
 
         try:
             ds = xr.open_dataset(fn, decode_times=False)
+     
+            # volume = 4/3 * np.pi * (ds.Ds/2)**3 
+            ds = ds.dropna(dim="N", how="any")
+            conc = ds.ssc
+
         except:
-            print("delete %s" % fn) 
+            print("skipping %s" % fn) 
             continue  
-        # volume = 4/3 * np.pi * (ds.Ds/2)**3 
-        ds = ds.dropna(dim="N", how="any")
 
-
-
-        lstdata= pd.read_csv("lisst_data.csv")
-
-        seconds = lstdata['seconds'].values
-
-        size_classes = lstdata.columns[1:]
 
         df = pd.DataFrame(index=seconds)
         df['rmse'] = np.nan
@@ -107,6 +133,9 @@ if 0 :
         df.loc[df.skill<-10] = np.nan
         print("MEAN RMSE: ",  np.nanmean(df.rmse))
         print("MEAN SKILL: ",  np.nanmean(df.skill))
+
+        # print("min RMSE: ",  np.nanmin(df.rmse))
+        print("min SKILL: ",  np.max(df.skill))
         df.to_csv("metrics/errors_%s.csv" % fn.replace('.nc', ''))
 
         # l = lstdata.iloc[0, 1:].values

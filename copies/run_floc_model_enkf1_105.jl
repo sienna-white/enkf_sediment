@@ -26,13 +26,11 @@ println("Using $(Threads.nthreads()) threads for parallelization.\n\n")
 function run_my_model(file_out_name::String, floc_on::Bool=true)
     #********************** SPATIAL DOMAIN  ***************************
     N = 100 #35 #50 #250    # number of ensembles points
-    dt = 0.01 #0.5 #0.5    # (seconds) size of time step 
+    dt = 0.05 #0.5 #0.5    # (seconds) size of time step 
     # M  = 3600*9 #*300 #0 #8*5 #*15 #*20 #*10 #10 #25 #*5 #*5*2  #24*5 #3600*5 #3600
-
-    M = 8640000*5 #360000 * 18
-    # M = 864000*5 #8640000 #*2#72000*100 #*24*12 # 15 hours @ dt = 0.05
+    M = 360000 #8640000 #*2#72000*100 #*24*12 # 15 hours @ dt = 0.05
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
-    isave = 30000 #6000 #1200*2 #600 #2400 # every 2 min  #60*10 #*2 #10* #60*10*5 #*10
+    isave = 2400 #6000 #1200*2 #600 #2400 # every 2 min  #60*10 #*2 #10* #60*10*5 #*10
     var2save = ["G", "alpha", "beta"]
 
     create_output_dict(M, isave, var2save, N)
@@ -258,8 +256,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
 
         # ***************************************************************
         # [4] Perform EnKF update  
-        # run_analysis, observations = get_observation_row(time)
-        run_analysis = false 
+        run_analysis, observations = get_observation_row(time)
+        # run_analysis = false 
         if run_analysis
             text = @sprintf("\t Observations available at time = %2.1f hours (timestep %d/%d)", time/3600, i, M)            
             println(text)
@@ -283,9 +281,10 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
             # @info "‖HPHᵀ‖ = $(norm(HPHt)), ‖R‖ = $(norm(R)), mean(diag(HPHt))/mean(R) = $(mean(diag(HPHt))/mean(R))"
             flush(stdout)
             # ***************************************************************
-            @threads for EID in 1:N
+            for EID in 1:N
                 # Analysis step 
                 # current_state = augmented_matrix[:, EID]
+                # obsP = observations .+ randn(length(R)).*sqrt.(R)
                 innovation = (observations .- H * augmented_matrix[:, EID])
                 # obs2state = inv(H) * observations
                 # augmented_matrix[:, EID] = obs2state # TEMP TEMP TEMP
@@ -388,8 +387,7 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     close(ds)
 end 
 
-run_my_model("flocmod_108_NOASSIM.nc", true)
-# 71 but longer
+run_my_model("flocmod_105.nc", true)
 
 # 101 >> trying out perturbed obs  [ voloume nosie to 1e-7 ]
 # 102 >> trying out perturbed obs  [ voloume nosie to 1e-10 ]

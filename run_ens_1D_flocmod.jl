@@ -5,6 +5,7 @@ using NCDatasets
 # using Arrow, DataFrames
 using CSV, DataFrames
 using Printf
+using Base.Threads
 using Profile
 using Statistics 
 using LinearAlgebra
@@ -23,17 +24,18 @@ using .floc_mod
 
 #********************** SPATIAL DOMAIN  ***************************
 N = 50   # number of grid points
-Nens = 5 
+Nens = 50 #30 
 H = 4   # depth (meters)
 dz = H/N # grid spacing - may need to adjust to reduce oscillations
 
  #********************** SPATIAL DOMAIN  ***************************
- dt = 0.05 #0.5 #0.5    # (seconds) size of time step 
- M = 200 #12000*20  #000 *5#72000*100 #*24*12 # 15 hours @ dt = 0.05
+ dt = 0.01 #0.5 #0.5    # (seconds) size of time step 
+ M = 100*60*3 #0 # 864000 
+    #72000 #0 #*2 
  # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
- isave = 10 #1200# 00 #6000 
- var2save = ["G", "Kz"]
-# Create vector to hold the time steps 
+ isave = 500 #2400  
+ var2save = ["G", "Kz", "U"]
+ # Create vector to hold the time steps 
 
 Times = collect(0:dt:(M*dt))
 println("Initialized time vector of length $M")
@@ -46,8 +48,14 @@ create_output_dict(M, isave, var2save, N)
  Ns = 36 #40                 # Number of sediment size classes
 
  ssc0 = zeros(N, Ns)     # Matrix for sediment concentration (Nz x Ns)
- ssc0[:, 1:20] .= abs.(randn(N, 20))*1e10  # Matrix for sediment concentration (N x Ns)
- ssc0 = ssc0 .+ abs.(randn(N, Ns)) 
+ ssc0[:, 5] .= abs.(randn(N, 1))*5e12  # Matrix for sediment concentration (N x Ns)
+ ssc0[:, 15] .= abs.(randn(N, 1))*5e10  # Matrix for sediment concentration (N x Ns)
+
+ssc = zeros(Nens, N, Ns)
+ssc[:,:,5]  .= 5e12 
+ssc[:,:,15] .= 5e10  # Matrix for sediment concentration (N x Ns)
+
+
 
  D = collect(logrange(1e-6, 1000e-6, Ns))      # Sediment grain sizes (\mu m )
 
@@ -88,7 +96,6 @@ end
 
  #***************************************************************************
 add_sediment_to_output(Ns, isave, M, Nens, N)
-file_out_name = "floc_1D_model.nc"
  #***************************************************************************
 
 
@@ -100,24 +107,22 @@ file_out_name = "floc_1D_model.nc"
 
 println("Setting up interpolator for hydrodynamic data...")
 
-# ---------------------------------------------------------------------------
-function interp_time(data::AbstractMatrix{<:Real}, t_data::AbstractVector{<:Real}, t_query::Real)
-    nt = length(t_data)
-    if t_query <= t_data[1]
+function nearest_time(data::AbstractMatrix{<:Real}, t_data::AbstractVector{<:Real}, t_query::Real)
+    j = searchsortedfirst(t_data, t_query)
+    if j <= 1
         return data[:, 1]
-    elseif t_query >= t_data[end]
+    elseif j > length(t_data)
         return data[:, end]
+    else
+        # j is the first index with t_data[j] >= t_query; compare it against j-1
+        # to find whichever timestamp is actually closest
+        return abs(t_data[j] - t_query) <= abs(t_query - t_data[j-1]) ? data[:, j] : data[:, j-1]
     end
-    j = clamp(searchsortedlast(t_data, t_query), 1, nt - 1)
-    t0, t1 = t_data[j], t_data[j + 1]
-    w = (t_query - t0) / (t1 - t0)
-    return @. (1 - w) * data[:, j] + w * data[:, j + 1]
 end
 
-
-hydro_fn = "hydro.nc"
+hydro_fn = "hydro_newZ.nc"
 hydro_vars = ["U", "Kq", "Nu", "C", "Kz", "L", "Q2", "Q2L", "N_BV2"]
-hydro_vars = ["Kq", "Nu",  "Kz", "Q2", "Q2L"]
+hydro_vars = ["Kq", "Nu",  "Kz", "Q2", "Q2L", "U",]
 
 local t_hydro::Vector{Float64}
 local hydro_data::Dict{String, Matrix{Float64}}
@@ -156,9 +161,9 @@ t_hydro, hydro_data = load_hydro_forcing(hydro_fn, hydro_vars, N)
 
 
 function get_hydro_at(time::Real)
-    return Dict(v => interp_time(hydro_data[v], t_hydro, time) for v in hydro_vars)
+    t_query = time + 9600 
+    return Dict(v => nearest_time(hydro_data[v], t_hydro, t_query) for v in hydro_vars)
 end
-#****************************************************************************************
 
 
 ######################################################################################################
@@ -175,8 +180,8 @@ end
 # isave = 1 
 
 # Create depth vector 
-z = collect(H:-dz:dz) .- dz/2 
-
+# z = collect(H:-dz:dz) .- dz/2 
+z = collect(dz:dz:H) .- dz/2 
 #********************** FIXED CONSTANTS  ***************************
 rhoA = 1.23                     # Density of air, kg/m^3
 rhoW = 1000                     # Density of water, kg/m^3
@@ -190,10 +195,6 @@ hr2s = 1/3600
 
 # Create dictionary to hold important discretization parameters
 discretization = Dict("beta" => (dt/dz^2), "dz" => dz, "dt" => dt, "N" => N, "z"=> z, "H" => H)
-
-
-ssc = zeros(Nens, N, Ns)
-ssc[:, :, 1:20] .= 1e10  # Matrix for sediment concentration (N x Ns)
 
 
 # Nens, N, Ns, n_saved_steps
@@ -223,28 +224,40 @@ function run_forward_model(EID, ssc_past, diffusivity, shear)
 end
 
 
-for i in 2:(M-1)
-    time = Times[i];
 
-    # [1]-[8] Hydrodynamic state is no longer solved internally -- every
-    # substep it's looked up from hydro.nc (1 s resolution) and linearly
-    # interpolated onto this model's dt time grid.
-    hydro_t = get_hydro_at(time)
+hydro_t = get_hydro_at(0)
+Kz    = hydro_t["Kz"]
+U    = hydro_t["U"]
 
-    Q2    = hydro_t["Q2"]
-    Q     = sqrt.(max.(Q2, 0))
-    Q2L   = hydro_t["Q2L"]
-    Kq    = hydro_t["Kq"]
-    Kz    = hydro_t["Kz"]
+# save2output(1, "G", turbulent_shear)
+save2output(1, "Kz", Kz)
+save2output(1, "U", U)
+save_sediment2output(1, ssc, "ssc")
 
-    # Turbulent shear driving the floc model 
-    turbulent_shear = (Q2 ./ Q2L) .* Q .* 100
-    turbulent_shear[end] = 0.1
 
-    # println("On time $i")
 
-    for EID in 1:Nens
-        # println("Running ensemble member $EID")
+    
+
+
+@threads for EID in 1:Nens
+    for i in 2:(M-1)
+        time = Times[i];
+
+        # [1]-[8] Hydrodynamic state is no longer solved internally -- every
+        # substep it's looked up from hydro.nc (1 s resolution) and linearly
+        # interpolated onto this model's dt time grid.
+        hydro_t = get_hydro_at(time)
+
+        Q2    = hydro_t["Q2"]
+        Q     = sqrt.(max.(Q2, 0))
+        Q2L   = hydro_t["Q2L"]
+        # Kq    = hydro_t["Kq"]
+        Kz    = hydro_t["Kz"]
+        U    = hydro_t["U"]
+
+        # Turbulent shear driving the floc model 
+        turbulent_shear = (Q2 ./ Q2L) .* Q .* 100
+        turbulent_shear[end] = 0.1
 
         ssc[EID, :, :] = run_forward_model(EID, ssc[EID, :, :], Kz, turbulent_shear)
 
@@ -256,9 +269,10 @@ for i in 2:(M-1)
                 println("Saving @ $i/$M $(i/M)")
                 save2output(index, "G", turbulent_shear)
                 save2output(index, "Kz", Kz)
-
-
+                save2output(index, "U", U)
                 push!(real_times_saved, time)
+                flush(stdout)
+
             end 
         end
     end
@@ -266,7 +280,7 @@ end
 
 
 
-fout = "test_sedimentDEL.nc"
+fout = "sediment_1D_model_22.nc"
 
 
 # ********************** save data ****************************
@@ -307,7 +321,10 @@ v = defVar(ds, "ssc", Float64,("Nens", "z", "Ds", "time"), attrib = OrderedDict(
     "units" =>  "parts/m3", "long_name" => "suspended sediment concentration"))
 v[:,:,:,:] = output["ssc"]
 
-
+# convert ws to a 2D matrix for saving 
+matrix_2d = Float64.(stack(ws)')
+v2 = defVar(ds, "ws", Float64,("Nens", "Ds"))
+v2[:,:] = matrix_2d;
 
 for var in var2save
     println("Saving ... $var")
@@ -315,7 +332,7 @@ for var in var2save
     v2[:,:] = output[var];
 end
 
-print("Saved $file_out_name \n")
+print("Saved $fout \n")
 close(ds)
 
 
