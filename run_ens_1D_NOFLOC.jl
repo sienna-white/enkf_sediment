@@ -45,7 +45,6 @@ create_output_dict(M, isave, var2save, N)
 # ********************** DEFINE SEDIMENT SIZE CLASSES ****************************
 println("Initializing sediment properties...")
 Ns = 2               # Number of sediment size classes
-
 # Set settling speeds
 ws = zeros(N, Ns)     # Matrix for sediment concentration (Nz x Ns)
 ws[:, 1] = 1.922e-6 .+ randn(N)*1e-6
@@ -61,9 +60,10 @@ ssc[:,:,1] .= 5e12
 ssc[:,:,2] .= 5e10  # Matrix for sediment concentration (N x Ns)
 
 # D = [10e-6, 50e-6]
+
 D = [2.6826958e-06, 1.9306977e-05]
  # Volume of each size class (m^3)
- Volumes = (4/3)*pi*(D./2).^3
+#  Volumes = (4/3)*pi*(D./2).^3
 
  #***************************************************************************
 add_sediment_to_output(Ns, isave, M, Nens, N)
@@ -210,7 +210,7 @@ for i in 2:(M-1)
         ssc[EID, :, :] = run_forward_model(EID, ssc[EID, :, :], Kz, turbulent_shear)
 
         if i % isave == 0
-            index = div(i, isave)
+            index = div(i, isave) + 1
             # save2output(index, "G", get_shear(time))
             # save_sediment2output(index, ssc, "ssc")
             save_sediment2output_ens(EID, index, ssc[EID, :, :], "ssc")

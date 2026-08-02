@@ -47,14 +47,10 @@ create_output_dict(M, isave, var2save, N)
  println("Initializing sediment properties...")
  Ns = 36 #40                 # Number of sediment size classes
 
- ssc0 = zeros(N, Ns)     # Matrix for sediment concentration (Nz x Ns)
- ssc0[:, 5] .= abs.(randn(N, 1))*5e12  # Matrix for sediment concentration (N x Ns)
- ssc0[:, 15] .= abs.(randn(N, 1))*5e10  # Matrix for sediment concentration (N x Ns)
-
 ssc = zeros(Nens, N, Ns)
 ssc[:,:,5]  .= 5e12 
 ssc[:,:,15] .= 5e10  # Matrix for sediment concentration (N x Ns)
-
+println("IC is :", ssc)
 
 
  D = collect(logrange(1e-6, 1000e-6, Ns))      # Sediment grain sizes (\mu m )
@@ -71,15 +67,15 @@ ssc[:,:,15] .= 5e10  # Matrix for sediment concentration (N x Ns)
  # Only need to calculate this once, can pass to all sediment parameter sets 
  collision_matrix = calculate_collision_matrix(D, Ns)
 
-alpha0 = 0.3 
-beta0  = 0.1
+alpha0 = 0.003 
+beta0  = 0.001
 nf0 = 2.2  
 beta20 = 1.5
 
-Alphas = randn(N) 
-Betas = randn(N)
-Nfs = randn(N)
-Beta2s = randn(N)
+Alphas = randn(Nens) 
+Betas = randn(Nens)
+Nfs = zeros(Nens) .+ 2.2 #randn(Nens)
+Beta2s = randn(Nens)
 
 floc_params_list = Vector{Any}(undef, Nens)
 ws = Vector{Any}(undef, Nens)
@@ -89,7 +85,7 @@ for EID in 1:Nens
     Betas[EID] = beta0 * exp(0.1*Betas[EID]) 
     Beta2s[EID] = beta20 * exp(0.1*Beta2s[EID]) 
     Nfs[EID] = nf0 * exp(0.1* Nfs[EID])  
-    floc_params = init_params(D, Ns, ssc0[EID,:], Alphas[EID], Betas[EID], Beta2s[EID], Nfs[EID], collision_matrix)
+    floc_params = init_params(D, Ns, ssc[EID, 1, :], Alphas[EID], Betas[EID], Beta2s[EID], Nfs[EID], collision_matrix)
     floc_params_list[EID] = floc_params
     ws[EID] = floc_params.ws
 end 
@@ -207,12 +203,12 @@ function run_forward_model(EID, ssc_past, diffusivity, shear)
     ssc_next = similar(ssc_)
     
     Gammas = zeros(N, Ns) 
-    for depth in 1:N # Calculate floc mod ROC over each depth
-        Gammas[depth,:] = run_floc_mod_gamma(floc_params_list[EID], ssc_[depth, :], Ns,  shear[depth], dt) 
-        # ssc1[ssc1 .* vec(Volumes) .> 15e-5] .= 100
+    # for depth in 1:N # Calculate floc mod ROC over each depth
+    #     Gammas[depth,:] = run_floc_mod_gamma(floc_params_list[EID], ssc_[depth, :], Ns,  shear[depth], dt) 
+    #     # ssc1[ssc1 .* vec(Volumes) .> 15e-5] .= 100
 
-    end 
-    Gammas[.!isfinite.(Gammas)] .= 0 
+    # end 
+    # Gammas[.!isfinite.(Gammas)] .= 0 
 
     # Now loop through sediment classes 
     for sed in 1:Ns
@@ -232,8 +228,9 @@ U    = hydro_t["U"]
 # save2output(1, "G", turbulent_shear)
 save2output(1, "Kz", Kz)
 save2output(1, "U", U)
-save_sediment2output(1, ssc, "ssc")
-
+for EID in 1:Nens
+    save_sediment2output_ens(EID, 1, ssc[EID, :, :], "ssc")
+end 
 
 
     
@@ -262,10 +259,12 @@ save_sediment2output(1, ssc, "ssc")
         ssc[EID, :, :] = run_forward_model(EID, ssc[EID, :, :], Kz, turbulent_shear)
 
         if i % isave == 0
-            index = div(i, isave)
+            index = div(i, isave) + 1
             # save_sediment2output(index, ssc, "ssc")
             save_sediment2output_ens(EID, index, ssc[EID, :, :], "ssc")
             if EID==1
+                println("Saving @ index $index")
+
                 println("Saving @ $i/$M $(i/M)")
                 save2output(index, "G", turbulent_shear)
                 save2output(index, "Kz", Kz)
@@ -280,7 +279,8 @@ end
 
 
 
-fout = "sediment_1D_model_22.nc"
+fout = "sediment_1D_model_24.nc"
+# 24 no floc mod --> test for IC 
 
 
 # ********************** save data ****************************

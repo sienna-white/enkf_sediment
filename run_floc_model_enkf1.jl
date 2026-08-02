@@ -186,21 +186,21 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     # noise_Nflux = zeros(N, Nflux) 
     noise_N     = zeros(N)
     noise_ssc   = zeros(N, Ns)
-    # for EID in 1:N
-    #     alpha = alpha0 * exp(0.1*Alphas[EID]) 
-    #     beta = beta0 * exp(0.1*Betas[EID]) 
-    #     beta2 = beta20 * exp(0.1*Beta2s[EID]) 
-    #     nf = nf0 * exp(0.1* Nfs[EID])  #* sin(Nfs[EID])^2 
-    #     floc_params = init_params(D, Ns, ssc0[EID,:], alpha, beta, beta2, nf, collision_matrix)
-    #     # alpha = Alphas[EID]
-    #     # beta = Betas[EID]
-    #     # beta2 = Beta2s[EID]
-    #     # nf = Nfs[EID]
-    #     # floc_params = init_params(D, Ns, ssc0[EID,:], alpha, beta, beta2, nf)
-    #     floc_params_list[EID] = floc_params
-    #     # push!(floc_params_list, floc_params)
-    #     @printf("\tParameters for ensemble [%d]: alpha=%2.2f, beta=%2.2f, beta2=%2.2f, nf=%2.2f\n", EID, alpha, beta, beta2, nf)
-    # end
+    for EID in 1:N
+        alpha = alpha0 * exp(0.1*Alphas[EID]) 
+        beta = beta0 * exp(0.1*Betas[EID]) 
+        beta2 = beta20 * exp(0.1*Beta2s[EID]) 
+        nf = nf0 * exp(0.1* Nfs[EID])  #* sin(Nfs[EID])^2 
+        floc_params = init_params(D, Ns, ssc0[EID,:], alpha, beta, beta2, nf, collision_matrix)
+        # alpha = Alphas[EID]
+        # beta = Betas[EID]
+        # beta2 = Beta2s[EID]
+        # nf = Nfs[EID]
+        # floc_params = init_param_s(D, Ns, ssc0[EID,:], alpha, beta, beta2, nf)
+        floc_params_list[EID] = floc_params
+        # push!(floc_params_list, floc_params)
+        @printf("\tParameters for ensemble [%d]: alpha=%2.2f, beta=%2.2f, beta2=%2.2f, nf=%2.2f\n", EID, alpha, beta, beta2, nf)
+    end
     VOLUME_NOISE = (1e-8./Volumes')
 
     for i in 2:(M)
@@ -208,18 +208,16 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         #   Random walk for parameters and flux term
         #***************************************************************************
         # Flux  .+=  randn(N, Nflux).* 0.0001 # Add some random noise to the flux term
-        noise = 0.02
-        Alphas.+=  randn!(noise_N) .* noise
-        Betas .+=  randn!(noise_N) .* noise 
-        # Beta2s.+=  randn!(noise_N).* noise
-        # Nfs   .+=  randn!(noise_N) .* noise 
+        # noise = 0.02
+        # Alphas.+=  randn!(noise_N) .* noise
+        # Betas .+=  randn!(noise_N) .* noise 
+
 
         # Flux  .=  (1 .+ randn(N, Nflux).* 0.01) # Add some random noise to the flux term
         # Alphas.=   randn!(noise_N) 
         # Betas .=   randn!(noise_N) 
         # Beta2s.=  randn!(noise_N) 
         # Nfs   .=   randn!(noise_N) 
-
         time = Times[i];
         # ***************************************************************
         # [1] Advance sediment concentrations for each size class
@@ -234,14 +232,14 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
         
         # ***************************************************************
         @threads for EID in 1:N 
-            alpha = alpha0 * exp(0.1*Alphas[EID]) 
-            beta = beta0 * exp(0.1*Betas[EID]) 
-            beta2 = beta20 * exp(0.1*Beta2s[EID]) 
-            nf = nf0 * exp(0.1*Nfs[EID]) 
-            floc_params = init_params(D, Ns, ssc[EID,:], alpha, beta, beta2, nf, collision_matrix)
-            ssc_ = run_floc_mod(floc_params, ssc[EID, :], Ns,  shear, dt) 
+            # alpha = alpha0 * exp(0.1*Alphas[EID]) 
+            # beta = beta0 * exp(0.1*Betas[EID]) 
+            # beta2 = beta20 * exp(0.1*Beta2s[EID]) 
+            # nf = nf0 * exp(0.1*Nfs[EID]) 
+            # floc_params = init_params(D, Ns, ssc[EID,:], alpha, beta, beta2, nf, collision_matrix)
+            # ssc_ = run_floc_mod(floc_params, ssc[EID, :], Ns,  shear, dt) 
                        # sed distribution ~  Ns ~ Shear ~ dt                           #  turbulent_shears[i]
-            # ssc_ = run_floc_mod(floc_params_list[EID], ssc[EID, :], Ns,  shear, dt) 
+            ssc_ = run_floc_mod(floc_params_list[EID], ssc[EID, :], Ns,  shear, dt) 
             # Flux_ = zeros(Ns)
             # Flux_[1:Flux_ind] .= Flux[EID, 1]
             # Flux_[Flux_ind+1:end] .= Flux[EID, 2]
@@ -314,8 +312,9 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
                 # Nfs[EID]    = augmented_matrix[IND + 3, EID] 
                 # Beta2s[EID] = augmented_matrix[IND + 4, EID]
             end
-            variables["SSC"] = ssc
         end 
+        variables["SSC"] = ssc
+
         # ***************************************************************
         # ***************************************************************
         if i % isave == 0

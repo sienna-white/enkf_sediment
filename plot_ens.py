@@ -38,7 +38,7 @@ from scipy.integrate import cumulative_trapezoid
 # NOTE: the ADCP and LISST paths below are copied verbatim from the original
 # notebook (hardcoded to your scratch directory). Update them here, or pass
 # --adcp / --lisst on the command line, if this is run from somewhere else.
-DEFAULT_NC = "flocmod_108.nc"
+DEFAULT_NC = "flocmod_108_NOASSIM.nc"
 DEFAULT_ADCP = "/global/scratch/users/siennaw/data/usgs/resampled_adcp_usgs.nc"
 DEFAULT_LISST = "/global/scratch/users/siennaw/data/usgs/CSF20_Shallows_Time_Series/CSF20SC104ls-b.nc"
 DEFAULT_LISST_CSV = "lisst_data.csv"

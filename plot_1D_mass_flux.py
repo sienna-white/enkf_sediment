@@ -7,13 +7,25 @@ import cmocean as cmo
 
 # /global/scratch/users/siennaw/scripts/enkf_sediment/1DModel_sediment_NOFLOCMOD.nc
 dsn = xr.open_dataset("sediment_1D_NOFLOCMOD.nc", decode_times=False)
-dsf = xr.open_dataset("sediment_1D_model_22.nc", decode_times=False)
+dsf = xr.open_dataset("sediment_1D_model_24.nc", decode_times=False)
 
-print(dsn)
+
+
+print(dsn.Ds)
+
+print("LOGRANGE:")
+print(dsf.Ds.values[5], dsf.Ds.values[15])
 models = {"Fixed size classes" : dsn,  "FLOCMOD" : dsf}
 colors = {"Fixed size classes" : "#A59837",  "FLOCMOD" : "#7A3D5D"}
 keys = list(models.keys())
 
+
+# print('no floc')
+# print(dsn.ssc.isel(time=0).mean(dim="Nens")) 
+
+
+# print('floc:')
+# print(dsf.ssc.isel(time=0).mean(dim="Nens")) 
 
 # z = -ds.z 
 # nd = len(ds.Ds)
@@ -66,10 +78,11 @@ for key in keys:
         var = mass_flux.isel(Nens=N).values 
         ax.plot(time, var, color=color, linewidth=3, alpha=0.1)
 
+
     var = mass_flux.mean(dim="Nens")
     ax.plot(time, var, color=color, linewidth=1, alpha=0.9, label=key)
     # print("average flux: ", var[0:6])
-ax.set_ylim(ds.time.values[0]/3600 , ds.time.values[-1]/3600)
+ax.set_ylim(dsf.time.values[0]/3600 , dsf.time.values[-1]/3600)
 fig.savefig('1DModel_MASSFLUX.png')
 
 
@@ -77,6 +90,49 @@ fig.savefig('1DModel_MASSFLUX.png')
 
 
 
+print("OFF")
+# mass = get_mass(dsn)
+print(dsn.ssc.isel(time=0).mean(dim="Nens")) 
+
+# print(mass)
+
+print("ON")
+mass = get_mass(dsf)
+print(dsf.ssc.isel(time=1).mean(dim="Nens")) 
+# print(mass[5], mass[15])
+
+
+# ######################### PLOT MASS  #########################
+fig = plt.figure(figsize=(8, 3))
+ax = plt.gca()
+plt.suptitle("Suspended sediment flux")
+
+for key in keys:
+    # print(key)
+    ds = models[key]
+    mass = get_mass(ds)
+    print("")
+    mass_conc = ds.ssc * mass #* 1e3
+
+    mass_conc = mass_conc.sum(dim="Ds")
+    total_mass = mass_conc.integrate(coord="z") #.sum(dim="z")
+
+
+    time = ds.time.values / 3600 
+    Nens = len(ds.Nens)
+    color = colors[key]
+    for N in range(Nens):
+        var = total_mass.isel(Nens=N).values 
+        ax.plot(time, var, color=color, linewidth=3, alpha=0.1)
+
+    var = total_mass.mean(dim="Nens")
+    print(key, " total mass :")
+    print(var.values[0:10])
+    ax.plot(time, var, color=color, linewidth=1, alpha=0.9, label=key)
+    # print("average flux: ", var[0:6])
+ax.set_ylim(dsf.time.values[0]/3600 , dsf.time.values[-1]/3600)
+fig.savefig('1DModel_TOTAL_MASS.png')
+assert(False)
 
 
 
