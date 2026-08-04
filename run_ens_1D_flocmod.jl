@@ -24,16 +24,17 @@ using .floc_mod
 
 #********************** SPATIAL DOMAIN  ***************************
 N = 50   # number of grid points
-Nens = 50 #30 
+Nens = 40 #50 # 50 #30 
 H = 4   # depth (meters)
 dz = H/N # grid spacing - may need to adjust to reduce oscillations
 
  #********************** SPATIAL DOMAIN  ***************************
- dt = 0.01 #0.5 #0.5    # (seconds) size of time step 
- M = 100*60*3 #0 # 864000 
-    #72000 #0 #*2 
+ dt = 0.02 #0.5 #0.5    # (seconds) size of time step 
+#  M = 360000 * 6360036 #8 #0*5 #*8 #0 #* 3 # 5 #12 #0 * 12 #100*60*3 #0 # 864000 
+    #72000 #0 #*2
+ M = 360000 # for 0.03
  # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
- isave = 500 #2400  
+ isave = 6000 #*2 #1200 #0 #2400  
  var2save = ["G", "Kz", "U"]
  # Create vector to hold the time steps 
 
@@ -50,7 +51,7 @@ create_output_dict(M, isave, var2save, N)
 ssc = zeros(Nens, N, Ns)
 ssc[:,:,5]  .= 5e12 
 ssc[:,:,15] .= 5e10  # Matrix for sediment concentration (N x Ns)
-println("IC is :", ssc)
+# println("IC is :", ssc)
 
 
  D = collect(logrange(1e-6, 1000e-6, Ns))      # Sediment grain sizes (\mu m )
@@ -67,8 +68,11 @@ println("IC is :", ssc)
  # Only need to calculate this once, can pass to all sediment parameter sets 
  collision_matrix = calculate_collision_matrix(D, Ns)
 
-alpha0 = 0.003 
-beta0  = 0.001
+# alpha0 = 0.03 #2e-5 #0.003 
+# beta0  = 0.004 #2e-6 #0.001
+
+alpha0 = 2e-4 #2e-5 #0.003 
+beta0  = 0.5e-6 #2e-6 #0.001
 nf0 = 2.2  
 beta20 = 1.5
 
@@ -81,10 +85,10 @@ floc_params_list = Vector{Any}(undef, Nens)
 ws = Vector{Any}(undef, Nens)
 
 for EID in 1:Nens
-    Alphas[EID] = alpha0 * exp(0.1*Alphas[EID]) 
-    Betas[EID] = beta0 * exp(0.1*Betas[EID]) 
-    Beta2s[EID] = beta20 * exp(0.1*Beta2s[EID]) 
-    Nfs[EID] = nf0 * exp(0.1* Nfs[EID])  
+    Alphas[EID] = alpha0 * exp(0.2*Alphas[EID]) 
+    Betas[EID] = beta0 * exp(0.2*Betas[EID]) 
+    Beta2s[EID] = beta20 * exp(0.2*Beta2s[EID]) 
+    Nfs[EID] = nf0 * exp(0.2* Nfs[EID])  
     floc_params = init_params(D, Ns, ssc[EID, 1, :], Alphas[EID], Betas[EID], Beta2s[EID], Nfs[EID], collision_matrix)
     floc_params_list[EID] = floc_params
     ws[EID] = floc_params.ws
@@ -203,12 +207,12 @@ function run_forward_model(EID, ssc_past, diffusivity, shear)
     ssc_next = similar(ssc_)
     
     Gammas = zeros(N, Ns) 
-    # for depth in 1:N # Calculate floc mod ROC over each depth
-    #     Gammas[depth,:] = run_floc_mod_gamma(floc_params_list[EID], ssc_[depth, :], Ns,  shear[depth], dt) 
-    #     # ssc1[ssc1 .* vec(Volumes) .> 15e-5] .= 100
+    for depth in 1:N # Calculate floc mod ROC over each depth
+        Gammas[depth,:] = run_floc_mod_gamma(floc_params_list[EID], ssc_[depth, :], Ns,  shear[depth], dt) 
+        # ssc1[ssc1 .* vec(Volumes) .> 15e-5] .= 100
 
-    # end 
-    # Gammas[.!isfinite.(Gammas)] .= 0 
+    end 
+    Gammas[.!isfinite.(Gammas)] .= 0 
 
     # Now loop through sediment classes 
     for sed in 1:Ns
@@ -236,26 +240,26 @@ end
     
 
 
-@threads for EID in 1:Nens
-    for i in 2:(M-1)
-        time = Times[i];
+for i in 2:(M-1)
+    time = Times[i];
+    # [1]-[8] Hydrodynamic state is no longer solved internally -- every
+    # substep it's looked up from hydro.nc (1 s resolution) and linearly
+    # interpolated onto this model's dt time grid.
+    hydro_t = get_hydro_at(time)
 
-        # [1]-[8] Hydrodynamic state is no longer solved internally -- every
-        # substep it's looked up from hydro.nc (1 s resolution) and linearly
-        # interpolated onto this model's dt time grid.
-        hydro_t = get_hydro_at(time)
+    Q2    = hydro_t["Q2"]
+    Q     = sqrt.(max.(Q2, 0))
+    Q2L   = hydro_t["Q2L"]
+    # Kq    = hydro_t["Kq"]
+    Kz    = hydro_t["Kz"]
+    U    = hydro_t["U"]
 
-        Q2    = hydro_t["Q2"]
-        Q     = sqrt.(max.(Q2, 0))
-        Q2L   = hydro_t["Q2L"]
-        # Kq    = hydro_t["Kq"]
-        Kz    = hydro_t["Kz"]
-        U    = hydro_t["U"]
+    # Turbulent shear driving the floc model 
+    turbulent_shear = (Q2 ./ Q2L) .* Q .* 100
+    turbulent_shear[end] = 0.1
 
-        # Turbulent shear driving the floc model 
-        turbulent_shear = (Q2 ./ Q2L) .* Q .* 100
-        turbulent_shear[end] = 0.1
-
+    @threads for EID in 1:Nens
+    
         ssc[EID, :, :] = run_forward_model(EID, ssc[EID, :, :], Kz, turbulent_shear)
 
         if i % isave == 0
@@ -279,8 +283,31 @@ end
 
 
 
-fout = "sediment_1D_model_24.nc"
+fout = "sediment_1D_model_44_slow_oldMC.nc"
+
+# 40: 
+# 2e-4, 0.5e-6 parameters
+# 40 is 2 hrs 
+# 41 is 8 hours
+# 42 is 8 hours (0.02 ts)
+# 43 is 8 hours (0.03 ts)
+# 44 is 2 hrs (0.02 ts)
+
+# 34: 
+# alpha0 = 0.03 #2e-5 #0.003 
+# beta0  = 0.002 #2e-6 #0.001
+
+
+# 35: 
+# alpha0 = 0.03 
+# beta0  = 0.004 
+
+## 35: 
+
 # 24 no floc mod --> test for IC 
+# 28 > alpha, beta back to 0.03, 0.01
+# 30 >> 0.05 time step 
+# 31 >> parameters /10 again 
 
 
 # ********************** save data ****************************

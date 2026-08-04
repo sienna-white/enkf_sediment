@@ -7,16 +7,21 @@ import cmocean as cmo
 
 # /global/scratch/users/siennaw/scripts/enkf_sediment/1DModel_sediment_NOFLOCMOD.nc
 dsn = xr.open_dataset("sediment_1D_NOFLOCMOD.nc", decode_times=False)
-dsf = xr.open_dataset("sediment_1D_model_24.nc", decode_times=False)
+dsf = xr.open_dataset("sediment_1D_model_34_slow_NEWMC.nc", decode_times=False)
 
 
+ds3 = xr.open_dataset("sediment_1D_model_34_slow.nc", decode_times=False)
 
-print(dsn.Ds)
 
-print("LOGRANGE:")
-print(dsf.Ds.values[5], dsf.Ds.values[15])
-models = {"Fixed size classes" : dsn,  "FLOCMOD" : dsf}
-colors = {"Fixed size classes" : "#A59837",  "FLOCMOD" : "#7A3D5D"}
+print(dsn)
+print(dsf)
+
+max_time = max(dsf.time.values)
+
+models = {"Fixed size classes" : dsn,  "FLOCMOD (34)" : dsf, "FLOCMOD (35)" : ds3}
+colors = {"Fixed size classes" : "#A59837",  "FLOCMOD (34)" : "#7A3D5D", "FLOCMOD (35)" : "#D73220"}
+
+# colors = {"Fixed size classes" : "#A59837",  "FLOCMOD" : "#7A3D5D", }
 keys = list(models.keys())
 
 
@@ -76,30 +81,17 @@ for key in keys:
     color = colors[key]
     for N in range(Nens):
         var = mass_flux.isel(Nens=N).values 
-        ax.plot(time, var, color=color, linewidth=3, alpha=0.1)
+        ax.plot(time, var, color=color, linewidth=3, alpha=0.05)
 
 
     var = mass_flux.mean(dim="Nens")
     ax.plot(time, var, color=color, linewidth=1, alpha=0.9, label=key)
     # print("average flux: ", var[0:6])
-ax.set_ylim(dsf.time.values[0]/3600 , dsf.time.values[-1]/3600)
-fig.savefig('1DModel_MASSFLUX.png')
+ax.set_ylabel(r"Sed. flux (kg/m$^2$)")
+ax.grid(alpha=0.2)
+ax.set_xlim(dsf.time.values[0]/3600 , dsf.time.values[-1]/3600)
+fig.savefig('1DModel_MASSFLUX(t).png')
 
-
-
-
-
-
-print("OFF")
-# mass = get_mass(dsn)
-print(dsn.ssc.isel(time=0).mean(dim="Nens")) 
-
-# print(mass)
-
-print("ON")
-mass = get_mass(dsf)
-print(dsf.ssc.isel(time=1).mean(dim="Nens")) 
-# print(mass[5], mass[15])
 
 
 # ######################### PLOT MASS  #########################
@@ -128,30 +120,33 @@ for key in keys:
     var = total_mass.mean(dim="Nens")
     print(key, " total mass :")
     print(var.values[0:10])
-    ax.plot(time, var, color=color, linewidth=1, alpha=0.9, label=key)
+    ax.plot(time, var, '-', color=color, linewidth=1, alpha=0.9, label=key)
     # print("average flux: ", var[0:6])
-ax.set_ylim(dsf.time.values[0]/3600 , dsf.time.values[-1]/3600)
-fig.savefig('1DModel_TOTAL_MASS.png')
-assert(False)
+ax.set_xlim(dsf.time.values[0]/3600 , dsf.time.values[-1]/3600)
+fig.savefig('1DModel_TOTAL_MASS(t).png')
 
 
 
 fig, axs = plt.subplots(nrows=1, ncols=6, figsize=(12, 5), sharex=False, sharey=True)
 axs = axs.flatten()
 
-times2plot = np.arange(0, 175, 40)
+
+times2plot = np.arange(0, max_time, max_time//5)
+print("plotting time at ", times2plot)
 for key in keys:
 
     ds = models[key]
     mass = get_mass(ds)
     time = ds.time.values / 3600 
     Nens = len(ds.Nens)
-    z = -ds.z 
+    z = ds.z 
     for it, t in enumerate(times2plot):
         if it>5:
             continue 
         color = colors[key] 
         axs[it].set_title("%d min" % (t/60))
+        axs[it].set_ylim(0, 4)
+        axs[it].grid(alpha=0.2) 
         
         for N in range(Nens):
             var = ds.ssc.isel(Nens=N).sel(time=t, method='nearest')
@@ -177,7 +172,7 @@ for key in keys:
 #     ax.plot(time, var, color=color, linewidth=1, alpha=0.9, label=key)
 #     print("average flux: ", var[0:6])
 # ax.set_ylim(ds.time.values[0]/3600 , ds.time.values[-1]/3600)
-fig.savefig('1DModel_COMPARE_VOL.png')
+fig.savefig('1DModel_COMPARE_Mass(z).png')
 
    
     
@@ -209,11 +204,13 @@ fig.savefig('1DModel_COMPARE_VOL.png')
 # fig.savefig('1DModel_VOLUME_time.png')
 # # fig3.savefig('test1d2.png')
 
-assert(False)
 ######################### PHYSICAL FORCINGS #########################
 
 ds= dsf 
+print(ds)
 z = ds.z 
+
+time = ds.time.values/3600
 fig, axs = plt.subplots(nrows=3, ncols=1, figsize=(7, 7), sharex=False, sharey=True)
 axs = axs.flatten()
 
@@ -229,16 +226,72 @@ plt.colorbar(h, label=r'$\kappa$ (m$^2$/s)', shrink=0.7)
 h= axs[2].pcolormesh(time, z, ds.U.values.T, vmin=-0.5, vmax=0.5, cmap=cmo.cm.balance)
 axs[2].set_title("U (m/s)")
 plt.colorbar(h, label='U (m/s)', shrink=0.7)
-print(ds.U.values.T)
 
 for ax in axs:
     ax.grid(alpha=0.2)
-    ax.set_xlim(2.6, 12)
+    ax.set_xlabel("Depth (m)")
 
 plt.tight_layout() 
 
 fig.savefig("1DModel_Kappa_SHEAR_U.png")    # 
 #################################################################################
+
+
+
+
+
+
+fig, axs = plt.subplots(nrows=2, ncols=3, sharex=False, sharey=False, figsize=(16, 4))
+axs= axs.flatten()
+j=0 
+
+
+for ik, key in enumerate(["FLOCMOD"]):
+
+    ds = models[key]
+    print(key)
+    mass = get_mass(ds)
+    time = ds.time.values / 3600 
+    Nens = len(ds.Nens)
+
+    color = colors[key] 
+    ws = ds.ws.mean(dim="Nens")
+    for it, t in enumerate(times2plot):
+        if it>5:
+            continue 
+       
+        axs[it].set_title("%d min" % (t/60))
+        # axs[it].set_ylim(0, 4)
+        axs[it].grid(alpha=0.2) 
+
+        var = ds.ssc.mean(dim="Nens").sel(time=t, method='nearest')
+        ssc = var * mass * 1e3
+        ssc = ssc.integrate(coord="z")
+        print(ssc)
+
+        # ssc = ssc.sum(dim="Ds")
+        # axs[it].hist(ws*100, bins=36, alpha=0.2, label='Mass-Weighted', weights=ssc, density=True, color=color)
+        # print(ws*100)'
+        axs[it].plot(ws*100, ssc, 'x')
+        axs[it].grid(alpha=0.2)
+        axs[it].set_xscale('log')
+        axs[it].set_yscale('log')
+    # axs[it].set_xlim(0, 0.06)
+    # j = j+1
+    
+for ax in axs:
+    ax.set_xlabel("$w_s$ (cm/s)" )
+    
+    # ax.set_xlim(0,2)
+
+plt.tight_layout()
+fig.savefig("1DModel_Compare_ws.png")
+# axs[-5].set_xlabel("$w_s$ (cm/s)" )
+# axs[-4].set_xlabel("$w_s$ (cm/s)" )
+# axs[-3].set_xlabel("$w_s$ (cm/s)" )
+# axs[-2].set_xlabel("$w_s$ (cm/s)" )
+# axs[-1].set_xlabel("$w_s$ (cm/s)" )
+    # ax.set_ylabel("$w_s$ (cm/s)")
 
 
 # SHOW ROUSE PROFILES? 

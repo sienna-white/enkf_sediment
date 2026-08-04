@@ -248,7 +248,8 @@ function run_floc_mod_gamma(fp::FlocParams, n::Vector{<:Float64}, N::Int, G::Rea
     new_mass =  sum(n_new .* fp.particle_density) 
 
     mass_change = total_mass - new_mass
-    n_new[1] -= mass_change
+    n_new[1] += mass_change 
+    # claude thinks it should be  (+) until
     n_new = flocmod_mass_redistribute(fp, n_new, N) 
     gamma_dt = n_new - n
     return gamma_dt
@@ -295,6 +296,8 @@ function run_floc_mod(fp::FlocParams, n::Vector{<:Float64}, N::Int, G::Real, dt:
     mass_change = total_mass - new_mass
     # println("\t[1] Change in NP = ", mass_change)  # check mass conservation
     n_new[1] -= mass_change
+    # n_new[1] += mass_change
+
     # print("PARTICLE_DIST = ", (n_new .* particle_density[]), "\n")
     # for iv in 1:N
     #     # if n_new[iv] > 0.0              # was total_positive

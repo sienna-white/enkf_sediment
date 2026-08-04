@@ -38,10 +38,10 @@ from scipy.integrate import cumulative_trapezoid
 # NOTE: the ADCP and LISST paths below are copied verbatim from the original
 # notebook (hardcoded to your scratch directory). Update them here, or pass
 # --adcp / --lisst on the command line, if this is run from somewhere else.
-DEFAULT_NC = "flocmod_208_oldMC.nc"
+DEFAULT_NC = "flocmod_108.nc"
 DEFAULT_ADCP = "/global/scratch/users/siennaw/data/usgs/resampled_adcp_usgs.nc"
 DEFAULT_LISST = "/global/scratch/users/siennaw/data/usgs/CSF20_Shallows_Time_Series/CSF20SC104ls-b.nc"
-DEFAULT_LISST_CSV = "lisst_data_cleaned.csv"
+DEFAULT_LISST_CSV = "lisst_data.csv"
 DEFAULT_START_DATE = "2020-07-16 20:10:01"
 
 
@@ -122,14 +122,23 @@ def main():
     # ----------------------------------------------------------------- #
     fn = args.nc
     ds = xr.open_dataset(fn, decode_times=False)
-    volume = 4 / 3 * np.pi * (ds.Ds / 2) ** 3
+
+    # /global/scratch/users/siennaw/scripts/enkf_sediment/1DModel_sediment_NOFLOCMOD.nc
+    ds1 = xr.open_dataset("flocmod_208_oldMC.nc", decode_times=False)
+    ds2 = xr.open_dataset("flocmod_208_newMC_NOASSIM.nc", decode_times=False)
+
+    ds1 = ds1.dropna(dim="N", how="any")
+    ds2 = ds2.dropna(dim="N", how="any")
+
+    models = {"FLOCMOD with EnKF" : ds1,  "FLOCMOD without EnKF" : ds2}
+    colors = {"Fixed size classes" : "#A59837",  "FLOCMOD" : "#7A3D5D"}
+    keys = list(models.keys())   
 
     date = pd.to_datetime(args.start_date)
-    ds = ds.dropna(dim="N", how="any")
-    mtime = [date + pd.Timedelta(t, unit="s") for t in ds.time.values]
-    nt = len(ds.time)
-    Nens = len(ds.N)
-    Ns = len(ds.Ds)
+    # mtime = [date + pd.Timedelta(t, unit="s") for t in ds.time.values]
+    # nt = len(ds.time)
+    # Nens = len(ds.N)
+    # Ns = len(ds.Ds)
 
     # ----------------------------------------------------------------- #
     #  OPEN ADCP DATA
@@ -149,93 +158,93 @@ def main():
     ldates = julian_to_datetime(lds["time"].values, lds["time2"].values)
     lds = lds.assign_coords(time=ldates)
 
-    # =================================================================== #
-    #  PLOT 1: ensemble SSC time series, per size class
-    # =================================================================== #
-    print("Plotting: ensemble SSC time series...")
-    fig, axs = plt.subplots(nrows=5, ncols=2, figsize=(10, 11), sharex=True, sharey=False)
-    axs = axs.flatten()
+    # # =================================================================== #
+    # #  PLOT 1: ensemble SSC time series, per size class
+    # # =================================================================== #
+    # print("Plotting: ensemble SSC time series...")
+    # fig, axs = plt.subplots(nrows=5, ncols=2, figsize=(10, 11), sharex=True, sharey=False)
+    # axs = axs.flatten()
 
-    for j, Dsi in enumerate(range(0, Ns, 4)):
-        if j > 9:
-            continue
-        axs[j].grid(alpha=0.3)
-        axs[j].set_title(r"Ds = %.2f $\mu$m" % (ds.Ds.isel(Ds=Dsi).values * 1e6))
-        time = ds.time.values / 3600
-        axs[j].set_ylim(1, 2)
-        axs[j].set_ylabel("SSC [uL/L]")
-        for i in range(0, Nens):
-            s0 = ds.ssc.isel(N=i).isel(Ds=Dsi) * volume[Dsi] * 1e6
-            axs[j].plot(time, s0, color=cmo.cm.thermal(i / Nens), linewidth=2)
+    # for j, Dsi in enumerate(range(0, Ns, 4)):
+    #     if j > 9:
+    #         continue
+    #     axs[j].grid(alpha=0.3)
+    #     axs[j].set_title(r"Ds = %.2f $\mu$m" % (ds.Ds.isel(Ds=Dsi).values * 1e6))
+    #     time = ds.time.values / 3600
+    #     axs[j].set_ylim(1, 2)
+    #     axs[j].set_ylabel("SSC [uL/L]")
+    #     for i in range(0, Nens):
+    #         s0 = ds.ssc.isel(N=i).isel(Ds=Dsi) * volume[Dsi] * 1e6
+    #         axs[j].plot(time, s0, color=cmo.cm.thermal(i / Nens), linewidth=2)
 
-    axs[-1].set_xlabel("Time [hr]")
-    axs[-2].set_xlabel("Time [hr]")
-    save_and_close(fig, "ensemble_ssc_timeseries", outdir, run_tag, dpi)
+    # axs[-1].set_xlabel("Time [hr]")
+    # axs[-2].set_xlabel("Time [hr]")
+    # save_and_close(fig, "ensemble_ssc_timeseries", outdir, run_tag, dpi)
 
-    # =================================================================== #
-    #  PLOT 2: per-ensemble-member Hovmoller of number density + params
-    # =================================================================== #
-    print("Plotting: per-ensemble number density Hovmoller...")
-    fig, axs = plt.subplots(nrows=3, ncols=5, figsize=(14, 7), sharex=True, sharey=True)
-    axs[0, 0].set_ylabel(r"D [$\mu$m]")
-    axs[1, 0].set_ylabel(r"D [$\mu$m]")
-    axs[2, 0].set_ylabel(r"D [$\mu$m]")
-    for j in range(5):
-        axs[2, j].set_xlabel("Time [hr]")
-    axs = axs.flatten()
+    # # =================================================================== #
+    # #  PLOT 2: per-ensemble-member Hovmoller of number density + params
+    # # =================================================================== #
+    # print("Plotting: per-ensemble number density Hovmoller...")
+    # fig, axs = plt.subplots(nrows=3, ncols=5, figsize=(14, 7), sharex=True, sharey=True)
+    # axs[0, 0].set_ylabel(r"D [$\mu$m]")
+    # axs[1, 0].set_ylabel(r"D [$\mu$m]")
+    # axs[2, 0].set_ylabel(r"D [$\mu$m]")
+    # for j in range(5):
+    #     axs[2, j].set_xlabel("Time [hr]")
+    # axs = axs.flatten()
 
-    h = None
-    ax2 = None
-    for i in range(0, 15):
-        axs[i].grid(alpha=0.3)
-        axs[i].set_title("Ensemble #%d" % i)
-        ssc = ds.ssc.isel(N=i)
-        alpha = ds.alpha.isel(N=i)
-        beta = ds.beta.isel(N=i)
-        beta2 = ds.beta2.isel(N=i)
-        ax2 = axs[i].twinx()
-        ax2.plot(mtime, alpha, color="r", label="alpha", linewidth=2)
-        ax2.plot(mtime, beta, color="g", label="beta", linewidth=2)
-        h = axs[i].pcolormesh(mtime, ds.Ds.values * 1e6, ssc.T, cmap=cmo.cm.rain, shading="auto", vmin=0, vmax=1e10)
-        axs[i].set_yscale("log")
-        format_date_ax(axs[i], 72)
+    # h = None
+    # ax2 = None
+    # for i in range(0, 15):
+    #     axs[i].grid(alpha=0.3)
+    #     axs[i].set_title("Ensemble #%d" % i)
+    #     ssc = ds.ssc.isel(N=i)
+    #     alpha = ds.alpha.isel(N=i)
+    #     beta = ds.beta.isel(N=i)
+    #     beta2 = ds.beta2.isel(N=i)
+    #     ax2 = axs[i].twinx()
+    #     ax2.plot(mtime, alpha, color="r", label="alpha", linewidth=2)
+    #     ax2.plot(mtime, beta, color="g", label="beta", linewidth=2)
+    #     h = axs[i].pcolormesh(mtime, ds.Ds.values * 1e6, ssc.T, cmap=cmo.cm.rain, shading="auto", vmin=0, vmax=1e10)
+    #     axs[i].set_yscale("log")
+    #     format_date_ax(axs[i], 72)
 
-    plt.colorbar(h, ax=axs, orientation="vertical", label="particle density", shrink=0.5)
-    if ax2 is not None:
-        ax2.legend()
-    save_and_close(fig, "ensemble_number_density_hovmoller", outdir, run_tag, dpi)
+    # plt.colorbar(h, ax=axs, orientation="vertical", label="particle density", shrink=0.5)
+    # if ax2 is not None:
+    #     ax2.legend()
+    # save_and_close(fig, "ensemble_number_density_hovmoller", outdir, run_tag, dpi)
 
-    # =================================================================== #
-    #  PLOT 3: per-ensemble-member Hovmoller of volume density + params
-    # =================================================================== #
-    print("Plotting: per-ensemble volume density Hovmoller...")
-    fig, axs = plt.subplots(nrows=3, ncols=5, figsize=(14, 7), sharex=True, sharey=True)
-    axs[0, 0].set_ylabel(r"D [$\mu$m]")
-    axs[1, 0].set_ylabel(r"D [$\mu$m]")
-    axs[2, 0].set_ylabel(r"D [$\mu$m]")
-    for j in range(5):
-        axs[2, j].set_xlabel("Time [hr]")
-    axs = axs.flatten()
+    # # =================================================================== #
+    # #  PLOT 3: per-ensemble-member Hovmoller of volume density + params
+    # # =================================================================== #
+    # print("Plotting: per-ensemble volume density Hovmoller...")
+    # fig, axs = plt.subplots(nrows=3, ncols=5, figsize=(14, 7), sharex=True, sharey=True)
+    # axs[0, 0].set_ylabel(r"D [$\mu$m]")
+    # axs[1, 0].set_ylabel(r"D [$\mu$m]")
+    # axs[2, 0].set_ylabel(r"D [$\mu$m]")
+    # for j in range(5):
+    #     axs[2, j].set_xlabel("Time [hr]")
+    # axs = axs.flatten()
 
-    h = None
-    for i in range(0, 15):
-        axs[i].grid(alpha=0.3)
-        axs[i].set_title("Ensemble #%d" % i)
-        time = ds.time.values / 3600
-        ssc = ds.ssc.isel(N=i) * volume * 1e6
+    # h = None
+    # for i in range(0, 15):
+    #     axs[i].grid(alpha=0.3)
+    #     axs[i].set_title("Ensemble #%d" % i)
+    #     time = ds.time.values / 3600
+    #     ssc = ds.ssc.isel(N=i) * volume * 1e6
 
-        h = axs[i].pcolormesh(time, ds.Ds.values * 1e6, ssc.T, cmap=cmo.cm.rain, shading="auto", vmin=0, vmax=5)
-        axs[i].set_yscale("log")
+    #     h = axs[i].pcolormesh(time, ds.Ds.values * 1e6, ssc.T, cmap=cmo.cm.rain, shading="auto", vmin=0, vmax=5)
+    #     axs[i].set_yscale("log")
 
-        alpha = ds.alpha.isel(N=i)
-        beta = ds.beta.isel(N=i)
-        beta2 = ds.beta2.isel(N=i)
-        ax2 = axs[i].twinx()
-        ax2.plot(time, alpha, color="r", label="alpha", linewidth=2)
-        ax2.plot(time, beta, color="g", label="beta", linewidth=2)
+    #     alpha = ds.alpha.isel(N=i)
+    #     beta = ds.beta.isel(N=i)
+    #     beta2 = ds.beta2.isel(N=i)
+    #     ax2 = axs[i].twinx()
+    #     ax2.plot(time, alpha, color="r", label="alpha", linewidth=2)
+    #     ax2.plot(time, beta, color="g", label="beta", linewidth=2)
 
-    plt.colorbar(h, ax=axs, orientation="vertical", label="volume density", shrink=0.5)
-    save_and_close(fig, "ensemble_volume_density_hovmoller", outdir, run_tag, dpi)
+    # plt.colorbar(h, ax=axs, orientation="vertical", label="volume density", shrink=0.5)
+    # save_and_close(fig, "ensemble_volume_density_hovmoller", outdir, run_tag, dpi)
 
     # =================================================================== #
     #  PLOT 4 (disabled in notebook -- flux coefficient plot, no flux
@@ -248,77 +257,31 @@ def main():
     #  Kept disabled here for parity with the notebook; flip to `if 1:`
     #  if you want these two figures generated.
     # =================================================================== #
-    if 0:
-        print("Plotting: ADCP flux comparison (disabled)...")
-        fig, axs = plt.subplots(nrows=3, ncols=1, figsize=(14, 7), sharex=True, sharey=False)
 
-        depths = np.squeeze(adcp.P_1.values)
-        ax2 = axs[0].twinx()
-        ax2.plot(rtime, depths, color="k", label="Depth")
+    # # =================================================================== #
+    # #  PLOT 6: mean size-distribution snapshots at 4 times
+    # # =================================================================== #
+    # print("Plotting: size-distribution snapshots...")
+    # fig, axs = plt.subplots(nrows=4, ncols=1, figsize=(6, 6), sharex=True, sharey=False)
 
-        U = adcp_u.mean(dim="depth")
-        temp = pd.DataFrame({"u": np.squeeze(U.values)})
-        temp.index = rtime
-        output = pd.DataFrame(index=mtime)
+    # Ds_um = ds.Ds.values * 1e6
+    # for it, t in enumerate(range(0, nt, max(nt // 4, 1))):
+    #     if it > 3:
+    #         continue
+    #     time_ = mtime[it]
+    #     mean = ds.ssc.isel(time=t).mean(dim="N") * volume * 1e6
+    #     axs[it].plot(Ds_um, mean, "-", color="k", linewidth=2)
+    #     axs[it].set_title(time_.strftime("%b %d %H:%M"))
+    #     axs[it].set_xscale("log")
+    #     axs[it].grid(alpha=0.3)
+    #     axs[it].set_ylabel(r"$\mu$L/L")
+    #     axs[it].set_ylim(0, )
+    #     axs[it].set_xlim(Ds_um[0], Ds_um[-1])
 
-        combined_index = temp.index.union(output.index)
-        adcp_aligned = temp.reindex(combined_index).interpolate(method="time")
-        output["u"] = adcp_aligned
-
-        keys = []
-        colors = []
-        for i in range(0, 2):
-            color = cmo.cm.haline(i / 2)
-            f0 = ds.flux.isel(Nf=i).mean(dim="N")
-            f0 = f0.rolling(time=2).mean()
-            f0 = np.sin(f0)
-            keys.append(i)
-            colors.append(color)
-            output[i] = f0.values
-            axs[1].plot(output[i], "-", color=color, alpha=0.5, linewidth=3)
-            axs[2].plot(output.u / 100, "--k")
-
-        axs[0].set_xlim(mtime[0], mtime[-1])
-        save_and_close(fig, "adcp_flux_timeseries", outdir, run_tag, dpi)
-
-        fig, axs = plt.subplots(nrows=1, ncols=2, figsize=(8, 3), sharex=True, sharey=False)
-        axs = axs.flatten()
-        for i, (key, c) in enumerate(zip(keys, colors)):
-            if i > 11:
-                continue
-            axs[i].set_title(r"Ds = %s $\mu$m" % key)
-            axs[i].hist(output[key].loc[output.u > 0], bins=5, alpha=0.5, label="Flood", color="skyblue", density=True)
-            axs[i].hist(output[key].loc[output.u < 0], bins=5, alpha=0.5, label="Ebb", color="red", density=True)
-            axs[i].grid(alpha=0.3)
-            axs[i].set_xlim(-0.2, 0.2)
-            axs[i].vlines(0, 0, 20, color="k", alpha=0.5, linewidth=1)
-        axs[0].legend()
-        save_and_close(fig, "flux_flood_ebb_histogram", outdir, run_tag, dpi)
-
-    # =================================================================== #
-    #  PLOT 6: mean size-distribution snapshots at 4 times
-    # =================================================================== #
-    print("Plotting: size-distribution snapshots...")
-    fig, axs = plt.subplots(nrows=4, ncols=1, figsize=(6, 6), sharex=True, sharey=False)
-
-    Ds_um = ds.Ds.values * 1e6
-    for it, t in enumerate(range(0, nt, max(nt // 4, 1))):
-        if it > 3:
-            continue
-        time_ = mtime[it]
-        mean = ds.ssc.isel(time=t).mean(dim="N") * volume * 1e6
-        axs[it].plot(Ds_um, mean, "-", color="k", linewidth=2)
-        axs[it].set_title(time_.strftime("%b %d %H:%M"))
-        axs[it].set_xscale("log")
-        axs[it].grid(alpha=0.3)
-        axs[it].set_ylabel(r"$\mu$L/L")
-        axs[it].set_ylim(0, )
-        axs[it].set_xlim(Ds_um[0], Ds_um[-1])
-
-    axs[-1].set_xlabel("Sediment grain size (\u00b5m)")
-    axs[-1].legend()
-    plt.tight_layout()
-    save_and_close(fig, "size_distribution_snapshots", outdir, run_tag, dpi)
+    # axs[-1].set_xlabel("Sediment grain size (\u00b5m)")
+    # axs[-1].legend()
+    # plt.tight_layout()
+    # save_and_close(fig, "size_distribution_snapshots", outdir, run_tag, dpi)
 
     # =================================================================== #
     #  PLOT 8: LISST vs. model ensemble-mean Hovmoller comparison
@@ -328,28 +291,34 @@ def main():
     vconc = lds.vconc.mean(dim="sample").isel(depth=0).values
     lds_time = lds.time.values
 
-    fig, axs = plt.subplots(nrows=2, ncols=1, figsize=(14, 7), sharex=True, sharey=True)
+    fig, axs = plt.subplots(nrows=3, ncols=1, figsize=(14, 7), sharex=True, sharey=True)
     axs = axs.flatten()
 
     axs[0].pcolormesh(lds_time, l_ds, vconc.T, cmap=cmo.cm.rain, shading="auto", vmin=0, vmax=5)
-
-    ssc = ds.ssc
-    ssc0 = ssc.mean(dim="N") * volume * 1e6
     axs[0].set_title("LISST data")
-    axs[1].set_title("Model ensemble mean")
 
-    i = 1
-    axs[i].grid(alpha=0.3)
-    axs[i].pcolormesh(mtime, ds.Ds.values * 1e6, ssc0.T, cmap=cmo.cm.rain, shading="auto", vmin=0, vmax=5)
-    axs[i].set_yscale("log")
-    axs[i].set_xlim(mtime[0], mtime[-1])
-    axs[i].set_ylim(ds.Ds.values[0] * 1e6, ds.Ds.values[-1] * 1e6)
-    format_date_ax(axs[i], 24)
-
-    for ax in axs:
+    for ik, key in enumerate(keys):
+        ds = models[key]
+        mtime = [date + pd.Timedelta(t, unit="s") for t in ds.time.values]
+        # nt = len(ds.time)
+        # Nens = len(ds.N)
+        # Ns = len(ds.Ds)
+        volume = 4 / 3 * np.pi * (ds.Ds / 2) ** 3
+        ssc = ds.ssc
+        ssc0 = ssc.mean(dim="N") * volume * 1e6
+        axs[ik+1].pcolormesh(mtime, ds.Ds.values * 1e6, ssc0.T, cmap=cmo.cm.rain, shading="auto", vmin=0, vmax=5)
+        axs[ik+1].set_title(key)
+        
+    for ax in axs: 
+        ax.grid(alpha=0.3)
+        ax.set_yscale("log")
+        ax.set_xlim(mtime[0], mtime[-1])
+        ax.set_ylim(ds.Ds.values[0] * 1e6, ds.Ds.values[-1] * 1e6)
+        format_date_ax(ax, 24)
         ax.set_ylabel("D (\u00b5m)")
-    save_and_close(fig, "lisst_vs_model_hovmoller", outdir, run_tag, dpi)
-
+        
+    save_and_close(fig, "COMPARE_lisst_vs_model_hovmoller", outdir, run_tag, dpi)
+    assert(False)
     # =================================================================== #
     #  PLOT 10: D50 timeseries comparison (model vs. LISST) + ADCP shear
     # =================================================================== #
@@ -380,7 +349,7 @@ def main():
 
     ax.grid(alpha=0.3)
     ax.set_xlabel("Time [hrs]")
-    ax.set_ylabel(r"D$_{50}$ ($\mu$m)")
+    ax.set_ylabel(r"D$_{50}$ (\u00b5m)")
     ax.set_ylim(10, 200)
 
     d50 = lds["D50"].isel(depth=0)
@@ -534,8 +503,8 @@ def main():
         error = np.mean(np.sqrt((conc - l) ** 2))
         ax2.plot(t, error, "o", color=color, markersize=5, label="t=%d s" % t)
 
-    ax.set_xlim(0, 8)
-    ax.set_ylim(0, 8)
+    ax.set_xlim(0, 2)
+    ax.set_ylim(0, 2)
     ax.plot([0, 10], [0, 10], "--k", alpha=0.5)
     ax.set_xlabel("Floc Model")
     ax.set_ylabel("LISST")
@@ -550,7 +519,6 @@ def main():
     #  PLOT 16: ensemble parameter histograms at 4 times
     # =================================================================== #
     print("Plotting: parameter histograms...")
-
 
 
     alpha0 = 0.15

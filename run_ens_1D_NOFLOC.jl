@@ -29,7 +29,7 @@ dz = H/N # grid spacing - may need to adjust to reduce oscillations
 
  #********************** SPATIAL DOMAIN  ***************************
  dt = 1 #0.5 #0.5    # (seconds) size of time step 
- M = 3600*12  #000 *5#72000*100 #*24*12 # 15 hours @ dt = 0.05
+ M = 3600*8 #12  #000 *5#72000*100 #*24*12 # 15 hours @ dt = 0.05
  # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
  isave = 60# 00 #6000 
 #  var2save = ["G", "alpha", "beta"]
@@ -61,7 +61,10 @@ ssc[:,:,2] .= 5e10  # Matrix for sediment concentration (N x Ns)
 
 # D = [10e-6, 50e-6]
 
-D = [2.6826958e-06, 1.9306977e-05]
+
+DS = collect(logrange(1e-6, 1000e-6, 36))      # Sediment grain sizes (\mu m )
+D = [DS[5], DS[15]]
+# D = [2.6826958e-06, 1.9306977e-05]
  # Volume of each size class (m^3)
 #  Volumes = (4/3)*pi*(D./2).^3
 
@@ -183,6 +186,16 @@ function run_forward_model(EID, ssc_past, diffusivity, shear)
 end
 
 
+hydro_t = get_hydro_at(0)
+Kz    = hydro_t["Kz"]
+U    = hydro_t["U"]
+save2output(1, "Kz", Kz)
+save2output(1, "U", U)
+for EID in 1:Nens
+    save_sediment2output_ens(EID, 1, ssc[EID, :, :], "ssc")
+end 
+
+
 for i in 2:(M-1)
     time = Times[i];
 
@@ -206,7 +219,6 @@ for i in 2:(M-1)
 
     for EID in 1:Nens
         # println("Running ensemble member $EID")
-
         ssc[EID, :, :] = run_forward_model(EID, ssc[EID, :, :], Kz, turbulent_shear)
 
         if i % isave == 0
@@ -264,6 +276,11 @@ v[:] = real_times_saved #collect(1:nt)
 
 v = defVar(ds, "Nens", Int, ("Nens",))
 v[:] = collect(1:Nens)
+
+
+v2 = defVar(ds, "ws", Float64,("Nens", "Ds"))
+v2[:,:] = ws;
+
 
 
 # Nens, N, Ns, n_saved_steps

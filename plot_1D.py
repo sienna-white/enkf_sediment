@@ -6,10 +6,10 @@ import cmocean as cmo
 
 
 # /global/scratch/users/siennaw/scripts/enkf_sediment/1DModel_sediment_NOFLOCMOD.nc
-ds = xr.open_dataset("/global/scratch/users/siennaw/scripts/enkf_sediment/sediment_1D_model_20.nc", decode_times=False)
-print(ds)
+ds = xr.open_dataset("sediment_1D_model_35_slow_NEWMC.nc", decode_times=False)
 
-z = -ds.z 
+
+z = ds.z 
 
 nd = len(ds.Ds)
 nt = len(ds.time) 
@@ -41,18 +41,10 @@ fig = plt.figure(figsize=(8, 3))
 ax = plt.gca()
 plt.suptitle("Suspended sediment flux")
 
-
-mass_conc = ds.ssc * mass * 1e3
+mass_conc = ds.ssc * mass  #* 1e3
 mass_conc = mass_conc.sum(dim="Ds")
 mass_flux = mass_conc * ds.U
 mass_flux = mass_flux.sum(dim="z")
-
-
-print(mass_conc)
-
-print("mass flux:")
-print(mass_flux)
-print(mass_flux.shape)
 
 time = ds.time.values / 3600 
 
@@ -61,9 +53,9 @@ for N in range(Nens):
     var = mass_flux.isel(Nens=N).values 
     ax.plot(time, var, color=color, linewidth=3, alpha=0.1)
 
-
-    var = mass_flux.mean(dim="Nens")
-    ax.plot(time, var, color='k', linewidth=1, alpha=0.9)
+var = mass_flux.mean(dim="Nens")
+ax.plot(time, var, color='k', linewidth=1, alpha=0.9)
+ax.grid(alpha=0.2)
 fig.savefig('1DModel_MASSFLUX.png')
 
 
@@ -116,7 +108,7 @@ for t in range(0, nt, nt//5):
     axs[i].grid(alpha=0.3)
     axs[i].set_xlabel("U (m/s)")
 
-    # axs[i].set_ylim(-4, 0)
+    axs[i].set_ylim(0, 4)
 
 axs[-1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0. )
 axs[0].set_ylabel("Depth (m)")
@@ -170,7 +162,7 @@ fig.savefig('1DModel_Volume_Ds.png')
 
 fig, axs = plt.subplots(nrows=1, ncols=6, figsize=(12, 5), sharex=False, sharey=True)
 axs = axs.flatten()
-plt.suptitle("FlocMod on <-> advection/diff off")
+# plt.suptitle("FlocMod on <-> advection/diff off")
     
 for it, t in enumerate(range(0, nt, nt//5)):
 
@@ -182,28 +174,60 @@ for it, t in enumerate(range(0, nt, nt//5)):
     for N in range(Nens):
         var = ds.ssc.isel(time=t, Nens=N)
         var = var * mass[i] * 1e3
-        h= axs[it].plot(np.sum(var, axis=0), z, color=color, linewidth=3, alpha=0.1)
+        h= axs[it].plot(var.sum(dim="Ds"), z, color=color, linewidth=3, alpha=0.1)
 
     var = ds.ssc.isel(time=t).mean(dim="Nens")
     var = var * mass[i] * 1e3
-    total_volume = np.sum(var, axis=0)
+    total_volume = var.sum(dim="Ds") # np.sum(var, axis=0)
 
     h= axs[it].plot(total_volume, z, color=color, label="T=%d min" % (ds.time[t]/60), linewidth=2, alpha=1)
+    h= axs[0].plot(total_volume, z, color=color, label="T=%d min" % (ds.time[t]/60), linewidth=2, alpha=1)
 
     axs[it].grid(alpha=0.3)
     axs[it].set_xlabel("SSC (mg/L)")
 
-
-
     axs[it].set_title("t=%d min" % (ds.time.values[t]/60))
-    # axs[it].set_ylim(-4, 0)
+    axs[it].set_ylim(0, 4)
         # axs2[i].set_title("Ds = %.2f $\mu$m" % (ds.Ds.isel(Ds=d).values*1e6))
 
 axs[0].set_ylabel("Depth (m)")
 plt.tight_layout()
 
-fig.savefig('1DModel_VOLUME_time.png')
+fig.savefig('1DModel_SSC(z).png')
 # fig3.savefig('test1d2.png')
+
+
+
+
+#*#*#*#*#*#*##*#*#*#*#*#*##*#*#*#*#*#*##*#*#*#*#*#*#
+
+fig = plt.figure(figsize=(8,3))
+ax = plt.gca() 
+
+
+for i,t in enumerate(range(0, nt, nt//5)):
+    color = cmo.cm.thermal(t/nt)
+
+    for N in range(Nens):
+        var = ds.ssc.isel(Nens=N, time=t) * mass * 1e3
+        var = var.mean(dim='z') 
+        axs[i].plot(ds.Ds.values*1e6, var, '-', color=color, alpha=0.2, linewidth=3) 
+    
+    var = ds.ssc.isel(time=t)
+    var = var.mean(dim='z') 
+    var = var.mean(dim='Nens') * mass * 1e3
+    ax.plot(ds.Ds.values*1e6, var, '-', color=color, linewidth=1, label="t=%d min" % (ds.time.values[t]/60)) 
+    
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.grid(alpha=0.3)
+ax.set_title("T=%d min" % (ds.time.values[t]/60))
+ax.set_xlabel("Sediment grain size (µm)")
+ax.legend()
+
+plt.tight_layout()
+fig.savefig("1DModel_SedDist(t).png" )
+
 
 
 #*#*#*#*#*#*##*#*#*#*#*#*##*#*#*#*#*#*##*#*#*#*#*#*#

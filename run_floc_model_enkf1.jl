@@ -27,10 +27,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     #********************** SPATIAL DOMAIN  ***************************
     N = 100 #35 #50 #250    # number of ensembles points
     dt = 0.01 #0.5 #0.5    # (seconds) size of time step 
-    # M  = 3600*9 #*300 #0 #8*5 #*15 #*20 #*10 #10 #25 #*5 #*5*2  #24*5 #3600*5 #3600
+    M =  8640000*5
 
-    M = 8640000*5 #360000 * 18
-    # M = 864000*5 #8640000 #*2#72000*100 #*24*12 # 15 hours @ dt = 0.05
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
     isave = 30000 #6000 #1200*2 #600 #2400 # every 2 min  #60*10 #*2 #10* #60*10*5 #*10
     var2save = ["G", "alpha", "beta"]
@@ -128,8 +126,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     end 
 
     # Volume-weighted observations 
-    dfL = CSV.read("lisst_data.csv", DataFrame)
-    dfR = CSV.read("lisst_variance.csv", DataFrame)
+    dfL = CSV.read("lisst_data_cleaned.csv", DataFrame)
+    dfR = CSV.read("lisst_variance_cleaned.csv", DataFrame)
 
     function get_observation_row(time_stamp::Real, df=dfL)
         # Thank you chatgpt for this function
@@ -296,16 +294,6 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
                 # cstate = H * current_state
                 # astate = H * augmented_matrix[:, EID]
 
-                #     println("[1-OBS]: ", observations[30:end])
-                #     println("[1-MOD]: ", cstate[30:end])
-                #     println("[2-MOD]: ", astate[30:end])
-                #     println("\n\n")
-                # end 
-                # exit()
-
-                # Update flux coefficents 
-                # Flux[EID, :] = augmented_matrix[Ns+1:IND, EID]
-                
                 # Update parameters for the ensemble
                 Alphas[EID] = augmented_matrix[IND + 1, EID] 
                 Betas[EID]  = augmented_matrix[IND + 2, EID] 
@@ -387,9 +375,13 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     close(ds)
 end 
 
-run_my_model("flocmod_108_NOASSIM.nc", true)
+run_my_model("flocmod_208_newMC_NOASSIM.nc", true)
+# 200 runs use new, fixed data 
+
+
 # 71 but longer
 
+# flocmod_108_oldMC_1 
 # 101 >> trying out perturbed obs  [ voloume nosie to 1e-7 ]
 # 102 >> trying out perturbed obs  [ voloume nosie to 1e-10 ]
 # 103 >> trying out perturbed obs  [ voloume nosie to 1e-14 ]
