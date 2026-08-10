@@ -75,7 +75,7 @@ if 0:
 
 
 
-    lstdata= pd.read_csv("lisst_data.csv")
+    lstdata= pd.read_csv("lisst_data_cleaned.csv")
     seconds = lstdata['seconds'].values
     size_classes = lstdata.columns[1:]
 

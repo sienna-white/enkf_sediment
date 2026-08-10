@@ -301,11 +301,8 @@ end
 
 
 
-fout = "sediment_1D_model_94.nc"
+fout = "sediment_1D_model_93.nc"
 
-# 94 
-# alpha0 = 2e-2 #5 #2e-5 #0.003 
-# beta0  = 0.5e-2 #6 #2e-6 #0.001
 # 93
 # alpha0 = 2e-3 #5 #2e-5 #0.003 
 # beta0  = 0.5e-2 #6 #2e-6 #0.001

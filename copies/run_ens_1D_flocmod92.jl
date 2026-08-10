@@ -84,8 +84,8 @@ ssc[:,:,15] .= 5e10  # Matrix for sediment concentration (N x Ns)
 # alpha0 = 0.03 #2e-5 #0.003 
 # beta0  = 0.004 #2e-6 #0.001
 
-alpha0 = 2e-2 #5 #2e-5 #0.003 
-beta0  = 0.5e-2 #6 #2e-6 #0.001
+alpha0 = 2e-3 #5 #2e-5 #0.003 
+beta0  = 0.5e-3 #6 #2e-6 #0.001
 nf0 = 2.2  
 beta20 = 1.5
 
@@ -301,19 +301,73 @@ end
 
 
 
-fout = "sediment_1D_model_94.nc"
-
-# 94 
-# alpha0 = 2e-2 #5 #2e-5 #0.003 
-# beta0  = 0.5e-2 #6 #2e-6 #0.001
-# 93
-# alpha0 = 2e-3 #5 #2e-5 #0.003 
-# beta0  = 0.5e-2 #6 #2e-6 #0.001
+fout = "sediment_1D_model_92.nc"
 
 # 92 
 # alpha0 = 2e-3 #5 #2e-5 #0.003 
 # beta0  = 0.5e-4 #6 #2e-6 #0.001
 
+
+
+# 60 
+# alpha0 = 2e-4 #2e-5 #0.003 
+# beta0  = 0.5e-6 #2e-6 #0.001
+#61 
+# alpha0 = 2e-3 #2e-5 #0.003 
+# beta0  = 0.5e-5 #2e-6 #0.001
+
+# 63: 
+# alpha0 = 2e-2 #2e-5 #0.003 
+# beta0  = 0.5e-4 #2e-6 #0.001
+
+
+# 64: 
+# alpha0 = 2e-2 
+# beta0  = 0.5e-3 
+
+# 65
+# alpha0 = 2e-5 #2e-5 #0.003 
+# beta0  = 0.5e-6 #2e-6 #0.001
+
+# 66 (dt = 0.1)
+# alpha0 = 2e-5 #2e-5 #0.003 
+# beta0  = 0.5e-6 #2e-6 #0.001
+ 
+# 67 > amping up the params a lot 
+
+
+# all of these have new mass Conserv
+# 50's: turbulent shear no longer*100 
+# 50: dt = 0.02
+# 51: dt = 0.01 
+# 52: dt = 0.01 [shorter]
+# 53: dt = 0.02, [shorter]
+# alpha0 = 2e-4 #2e-5 #0.003 
+# beta0  = 0.5e-6 #2e-6 #0.001
+
+# 40: 
+# 2e-4, 0.5e-6 parameters
+# 40 is 2 hrs 
+# 41 is 8 hours
+# 42 is 8 hours (0.02 ts)
+# 43 is 8 hours (0.03 ts)
+# 44 is 2 hrs (0.02 ts)
+
+# 34: 
+# alpha0 = 0.03 #2e-5 #0.003 
+# beta0  = 0.002 #2e-6 #0.001
+
+
+# 35: 
+# alpha0 = 0.03 
+# beta0  = 0.004 
+
+## 35: 
+
+# 24 no floc mod --> test for IC 
+# 28 > alpha, beta back to 0.03, 0.01
+# 30 >> 0.05 time step 
+# 31 >> parameters /10 again 
 
 
 # ********************** save data ****************************

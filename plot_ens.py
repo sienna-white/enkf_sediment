@@ -38,7 +38,7 @@ from scipy.integrate import cumulative_trapezoid
 # NOTE: the ADCP and LISST paths below are copied verbatim from the original
 # notebook (hardcoded to your scratch directory). Update them here, or pass
 # --adcp / --lisst on the command line, if this is run from somewhere else.
-DEFAULT_NC = "flocmod_208_oldMC.nc"
+DEFAULT_NC = "flocmod_208_newMC.nc"
 DEFAULT_ADCP = "/global/scratch/users/siennaw/data/usgs/resampled_adcp_usgs.nc"
 DEFAULT_LISST = "/global/scratch/users/siennaw/data/usgs/CSF20_Shallows_Time_Series/CSF20SC104ls-b.nc"
 DEFAULT_LISST_CSV = "lisst_data_cleaned.csv"
@@ -122,6 +122,7 @@ def main():
     # ----------------------------------------------------------------- #
     fn = args.nc
     ds = xr.open_dataset(fn, decode_times=False)
+    print(ds)
     volume = 4 / 3 * np.pi * (ds.Ds / 2) ** 3
 
     date = pd.to_datetime(args.start_date)
@@ -303,20 +304,21 @@ def main():
 
     Ds_um = ds.Ds.values * 1e6
     for it, t in enumerate(range(0, nt, max(nt // 4, 1))):
+        print(it, t) 
         if it > 3:
             continue
-        time_ = mtime[it]
+        time_ = mtime[t]
         mean = ds.ssc.isel(time=t).mean(dim="N") * volume * 1e6
         axs[it].plot(Ds_um, mean, "-", color="k", linewidth=2)
         axs[it].set_title(time_.strftime("%b %d %H:%M"))
         axs[it].set_xscale("log")
         axs[it].grid(alpha=0.3)
-        axs[it].set_ylabel(r"$\mu$L/L")
+        axs[it].set_ylabel(r"SSC ($\mu$L/L)")
         axs[it].set_ylim(0, )
         axs[it].set_xlim(Ds_um[0], Ds_um[-1])
 
     axs[-1].set_xlabel("Sediment grain size (\u00b5m)")
-    axs[-1].legend()
+    # axs[-1].legend()
     plt.tight_layout()
     save_and_close(fig, "size_distribution_snapshots", outdir, run_tag, dpi)
 
@@ -359,8 +361,8 @@ def main():
     shear = ds.G.isel(N=0)
     ax = axs[0]
     ax2 = axs[1].twinx()
-    ax2.plot(mtime, shear, "-", color="#B21235", linewidth=2, label="Shear stress")
-    ax2.set_ylim(0, 10)
+    ax2.plot(mtime, shear, "-", color="#B21235", linewidth=2, label="Shear stress", alpha=0.8)
+    ax2.set_ylim(0, 150)
     ax2.tick_params(axis="y", colors="#B21235")
     ax2.set_ylabel(r"ADV shear stress (s$^{-1}$)", color="#B21235")
 
@@ -394,10 +396,13 @@ def main():
     ax.set_ylim(0, 200)
 
     h = axs[1].contourf(rtime, -adcp_z + offset, adcp_u.T, cmap=cmo.cm.balance, levels=levels)
-    plt.colorbar(h, label="U Velocity (cm/s)", shrink=0.7)
+    fig.colorbar(h, ax=axs[1], label="U Velocity (cm/s)", shrink=0.7, pad=0.01)
     axs[1].grid(alpha=0.3)
     axs[0].set_xlim(mtime[0], mtime[-1])
+    axs[1].set_ylabel("Depth (m)")
     axs[1].set_xlim(mtime[0], mtime[-1])
+    ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", fontsize=8)
+    # plt.tight_layout()
     save_and_close(fig, "d50_timeseries_comparison", outdir, run_tag, dpi)
 
     # =================================================================== #
@@ -649,8 +654,8 @@ def main():
     alphas = alpha0 * np.exp(0.1 *  ds.alpha.isel(time=t).values.flatten())
     betas = beta0 * np.exp(0.1 * ds.beta.isel(time=t).values.flatten())
 
-    axs[0].hist(alphas, density=True, bins=70)
-    axs[1].hist(betas, density=True, bins=70)
+    axs[0].hist(alphas, density=True, bins=70, color="#494872")
+    axs[1].hist(betas, density=True, bins=70, color="#8D3F61")
 
     axs[0].set_title(r"Assimilated values for $\alpha$")
     axs[1].set_title(r"Assimilated values for $\beta$")
@@ -658,8 +663,13 @@ def main():
     axs[0].set_xlabel(r"$\alpha$")
     axs[1].set_xlabel(r"$\beta$")
 
+
     for ax in axs.flatten():
         ax.grid(alpha=0.3)
+        ax.ticklabel_format(axis='x', style='sci', scilimits=(0,0))
+        ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
+
+        ax.set_ylabel("Probability density")
     plt.tight_layout()
     save_and_close(fig, "parameter_histograms_FULL", outdir, run_tag, dpi)
 

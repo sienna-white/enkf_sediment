@@ -4,6 +4,8 @@ using DataStructures: OrderedDict
 using NCDatasets
 # using Arrow, DataFrames
 using CSV, DataFrames
+using Base.Threads
+
 using Printf
 using Profile
 using Statistics 
@@ -23,15 +25,15 @@ using .floc_mod
 
 #********************** SPATIAL DOMAIN  ***************************
 N = 50   # number of grid points
-Nens = 50 #30 
+Nens = 80 #30 
 H = 4   # depth (meters)
 dz = H/N # grid spacing - may need to adjust to reduce oscillations
 
  #********************** SPATIAL DOMAIN  ***************************
  dt = 1 #0.5 #0.5    # (seconds) size of time step 
- M = 3600*8 #12  #000 *5#72000*100 #*24*12 # 15 hours @ dt = 0.05
+ M = 3600*24*7 #12  #000 *5#72000*100 #*24*12 # 15 hours @ dt = 0.05
  # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
- isave = 60# 00 #6000 
+ isave = 180# 00 #6000 
 #  var2save = ["G", "alpha", "beta"]
 # Create vector to hold the time steps 
 
@@ -46,9 +48,9 @@ create_output_dict(M, isave, var2save, N)
 println("Initializing sediment properties...")
 Ns = 2               # Number of sediment size classes
 # Set settling speeds
-ws = zeros(N, Ns)     # Matrix for sediment concentration (Nz x Ns)
-ws[:, 1] = 1.922e-6 .+ randn(N)*1e-6
-ws[:, 2] = 2.375e-5 .+ randn(N)*1e-5
+ws = zeros(Nens, Ns)     # Matrix for sediment concentration (Nens x Ns)
+ws[:, 1] = 1.922e-6 .+ randn(Nens)*1e-6
+ws[:, 2] = 2.375e-5 .+ randn(Nens)*1e-5
 
 # ssc0 = zeros(N, Ns)     # Matrix for sediment concentration (Nz x Ns)
 # ssc0[:, 1:2] .= 5e12 # Matrix for sediment concentration (N x Ns)
@@ -91,7 +93,6 @@ function nearest_time(data::AbstractMatrix{<:Real}, t_data::AbstractVector{<:Rea
         return abs(t_data[j] - t_query) <= abs(t_query - t_data[j-1]) ? data[:, j] : data[:, j-1]
     end
 end
-
 
 hydro_fn = "hydro_newZ.nc"
 hydro_vars = ["U", "Kq", "Nu", "C", "Kz", "L", "Q2", "Q2L", "N_BV2"]
@@ -177,7 +178,7 @@ function run_forward_model(EID, ssc_past, diffusivity, shear)
     Gammas = zeros(N, Ns) 
 
     # Now loop through sediment classes 
-    for sed in 1:Ns
+    for sed in 1:Ns                     ssc = zeros(N, Ns)
         ssc_next[:,sed] = advance_sediment3(ssc_[:,sed], diffusivity, ws[EID,sed], Gammas[:,sed], discretization)
     end 
     clamp!(ssc_next, 0, Inf)
@@ -217,7 +218,7 @@ for i in 2:(M-1)
 
     # println("On time $i")
 
-    for EID in 1:Nens
+    @threads for EID in 1:Nens
         # println("Running ensemble member $EID")
         ssc[EID, :, :] = run_forward_model(EID, ssc[EID, :, :], Kz, turbulent_shear)
 

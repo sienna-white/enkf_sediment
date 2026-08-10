@@ -38,8 +38,8 @@ function run_my_model(file_out_name::String, floc_on::Bool=true)
     N = 50    # number of grid points
     H = 4    # depth (meters)
     dz = H/N  # grid spacing - may need to adjust to reduce oscillations
-    dt = 5    # (seconds) size of time step 
-    M  = 3600*24 #*7 #24 #3600
+    dt = 1    # (seconds) size of time step 
+    M  = 3600*24*10 #*7 #24 #3600
 
     # Increments for saving profiles. set to 1 to save all; 10 saves every 10th, etc. 
     isave = 40 # 6 #1000
